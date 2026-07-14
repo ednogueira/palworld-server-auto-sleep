@@ -1,0 +1,38 @@
+{
+  "name": "palworld-server-auto-sleep",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Protege sua campanha de Palworld desligando automaticamente o servidor dedicado quando não há jogadores online. Evita morte dos Pals, deterioração da base e perda de progressão. Quando um jogador tenta conectar, o servidor acorda automaticamente do último save.",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ednogueira/palworld-server-auto-sleep.git"
+  },
+  "keywords": ["palworld", "dedicated-server", "auto-sleep", "server-manager", "game-server"],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ednogueira/palworld-server-auto-sleep/issues"
+  },
+  "homepage": "https://github.com/ednogueira/palworld-server-auto-sleep#readme",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "pino": "^9.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

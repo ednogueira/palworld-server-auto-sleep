@@ -66,9 +66,9 @@ if ($defaultHashesFound) {
     $hashPattern = '^[A-Fa-f0-9]{32}$'
     if ($oldHash -notmatch $hashPattern -or $newHash -notmatch $hashPattern) {
         Write-Host ""
-        Write-Error "Hash invalido! O hash deve ter exatamente 32 caracteres hexadecimais (0-9, A-F)."
-        Write-Host "Exemplo: BFB1017B4D35A38EDCFF5389EC16A578"
-        Read-Host "Pressione Enter para sair..."
+        Write-Error 'Hash invalido! O hash deve ter exatamente 32 caracteres hexadecimais'
+        Write-Host 'Exemplo: BFB1017B4D35A38EDCFF5389EC16A578'
+        Read-Host 'Pressione Enter para sair...'
         exit 1
     }
 }
@@ -86,7 +86,7 @@ if ($gameProcess) {
 if (-not $userSaveDirs -or $userSaveDirs.Count -eq 0) {
     Write-Warning "Nenhuma pasta de save do Palworld foi encontrada em $appDataPath."
     Write-Host "Certifique-se de que ja jogou Palworld pelo menos uma vez neste computador." -ForegroundColor Yellow
-    Read-Host "Pressione Enter para sair..."
+    Read-Host 'Pressione Enter para sair...'
     exit
 }
 
@@ -141,4 +141,4 @@ if (-not $migrationDone) {
 }
 
 Write-Host "`n=== Processo concluido! Agora voce pode abrir o Palworld e testar seu mapa. ===" -ForegroundColor Cyan
-Read-Host "Pressione Enter para fechar esta janela..."
+Read-Host 'Pressione Enter para fechar esta janela...'

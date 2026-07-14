@@ -168,8 +168,57 @@ Ele apenas usa a porta `8211` como gatilho quando o servidor está parado.
 - `REST_API_PASSWORD`
 - `PALSERVER_PROCESS_NAME` se o nome do executável for diferente do exemplo
 
-## Atualizar Mapa do usuário
-- Abra o powershell e a partir do diretório onde se encontra o arquivo `update-map.ps1` execute o comando:
+---
 
-    ``` powershell
-    powershell -ExecutionPolicy Bypass -File .\update-map.ps1
+## Migrar dados de mapa entre servidores (`update-map.ps1`)
+
+Quando o servidor dedicado de Palworld é migrado para outro local (por exemplo, mudança de hash, reinstalação, ou troca de máquina), o hash do save muda. Isso faz com que cada jogador perca o progresso do **mapa** (exploração, marcações, ícones, pontos de interesse) ao logar no novo servidor, mesmo que a campanha (Pals, base, itens) continue intacta.
+
+Este script copia os dados de **mapa do jogador** da pasta com hash antigo para a pasta com hash novo, preservando a exploração e as marcações do mapa.
+
+### Quando usar
+
+- Você migrou o servidor Palworld para outra máquina ou reinstalou e o hash mudou
+- Seus jogadores estão logando no novo servidor mas o mapa aparece "inexplorado" (sem ícones, sem marcas de exploração)
+- A campanha do servidor foi restaurada de um backup, mas os mapas individuais dos jogadores não acompanharam
+
+### Fluxo de uso
+
+1. **Jogador conecta no novo servidor** pelo menos uma vez para criar a pasta de save com o hash novo
+2. **Jogador fecha o Palworld**
+3. **Jogador executa o `update-map.ps1`** no computador dele informando os hashes antigo e novo
+4. **Jogador conecta no servidor** — o mapa dele estará com toda exploração, marcações e ícones preservados
+
+### Como descobrir os hashes
+
+Peça para o jogador abrir o explorador de arquivos e ir até:
+
+```
+%LOCALAPPDATA%\Pal\Saved\SaveGames
+```
+
+Dentro haverá uma pasta com um número longo (o ID Steam do jogador). Abra-a e você verá pastas com nomes de **32 caracteres hexadecimais**:
+
+- **HASH ANTIGO** = pasta com os dados de mapa do servidor antigo
+- **HASH NOVO** = pasta criada quando o jogador conectou no novo servidor
+
+### Como executar o script
+
+No computador do **jogador**, abra o PowerShell, navegue até a pasta do projeto e execute:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\update-map.ps1
+```
+
+> ⚠️ O script fechará o Palworld automaticamente se estiver aberto para evitar corrupção.
+
+### Comportamento do script
+
+| Situação | Comportamento |
+|----------|--------------|
+| **Hashes padrão encontrados** | Usa automaticamente, sem perguntar nada |
+| **Hashes padrão não encontrados** | Exibe instruções e pede para digitar os hashes manualmente |
+| **Hash inválido** | Valida se tem 32 caracteres hexadecimais antes de prosseguir |
+| **Backup automático** | Cria backup da pasta de destino com sufixo `_backup_PS` |
+| **Múltiplos usuários Steam** | Se houver mais de um ID Steam no PC, processa todos |
+| **Nada encontrado** | Exibe mensagem clara com possíveis causas |

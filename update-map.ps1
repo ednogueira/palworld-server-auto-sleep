@@ -1,14 +1,22 @@
-# Script de Migração de Mapa Local - Palworld
+# Script de Migração de Dados de Mapa entre Servidores - Palworld
+# Quando o hash do servidor muda (migração, reinstalação, troca de máquina),
+# os dados de exploração do mapa de cada jogador são perdidos.
+# Este script copia os dados do mapa (marcações, ícones, exploração)
+# da pasta com hash antigo para a pasta com hash novo.
 # Executar este script fechará o Palworld para evitar corrupção de arquivos.
 
-Write-Host "=== Iniciando Migracao de Mapa do Palworld ===" -ForegroundColor Cyan
+Write-Host "=== Migracao de Dados de Mapa entre Servidores Palworld ===" -ForegroundColor Cyan
 
 # 1. Define os caminhos das pastas usando os hashes fornecidos
 $appDataPath = "$env:LOCALAPPDATA\Pal\Saved\SaveGames"
 
 Write-Host ""
-Write-Host "Este script serve para migrar seu mapa do Palworld quando o hash"
-Write-Host "do seu save antigo e diferente do hash do novo servidor."
+Write-Host "Este script copia os dados de MAPA (exploracao, marcacoes, icones)"
+Write-Host "da pasta com hash antigo para a pasta com hash novo."
+Write-Host ""
+Write-Host "Isso e necessario quando o servidor Palworld e migrado para outro"
+Write-Host "local e o hash muda — cada jogador precisa rodar este script no"
+Write-Host "seu proprio computador para nao perder o progresso do mapa."
 Write-Host ""
 Write-Host "Se voce esta rodando pela primeira vez, precisara informar os hashes."
 Write-Host ""

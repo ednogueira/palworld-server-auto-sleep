@@ -1,0 +1,79 @@
+[metadata]
+id = "ADR-0001"
+title = "Estrutura em camadas leves para o auto-sleep manager"
+status = "Aceito"
+date = "2026-07-17"
+
+[context]
+text = """
+O projeto palworld-auto-manager comecou com uma estrutura flat em src/*.ts, onde
+index.ts, config.ts, process-manager.ts, palworld-api.ts e outros helpers
+conviviam no mesmo diretorio. Essa organizacao funcionou bem para o MVP
+Windows, mas dificulta:
+
+- identificar quais modulos contem regras de negocio puras,
+- isolar adapters externos (API REST, Docker CLI, socket UDP, processos SO),
+- testar unidades sem depender de infraestrutura,
+- introduzir o novo modo Docker na Fase 2 sem aumentar o acoplamento.
+
+O AGENTS.md do projeto e o exemplo TREE.md recomendam a estrutura canonica
+node-ts-service com domain / application / adapters / entrypoints / shared.
+A Fase 2 da migracao precisa da abstracao ServerProcessDriver para suportar
+Windows nativo e Docker, o que e naturalmente uma porta de saida dentro de
+application/ports.
+"""
+
+[decision]
+text = """
+Reorganizar src/ em uma estrutura em camadas leves, inspirada em Clean
+Architecture, sem mudar comportamento:
+
+- domain/       : regras puras (state-manager, player-count).
+- application/  : casos de uso e ports (process-manager, idle-monitor,
+                  ports/server-process-driver, factories/create-process-driver).
+- adapters/     : interacoes externas (palworld-api, udp-wake-listener,
+                  process/windows-process-driver, process/docker-process-driver).
+- shared/       : config, logger, sleep.
+- entrypoints/  : main.ts (antigo index.ts).
+
+Manter src/index.ts como ponto de entrada publico compativel, importando e
+executando entrypoints/main.ts, para nao quebrar scripts e o campo "main" do
+package.json.
+"""
+
+[alternatives]
+items = [
+  { name = "Manter estrutura flat e adicionar apenas src/drivers/", reason = "Menor churn imediato, mas esconde a natureza de adapter dos drivers e nao alinha o projeto ao padrao documentado em TREE.md." },
+  { name = "Aplicar Clean Architecture pura com entidades, use-cases e gateways", reason = "Maior formalismo do que o tamanho do projeto justifica; aumentaria o numero de arquivos e abstracoes sem beneficios praticos imediatos." }
+]
+
+[tradeoffs]
+gains = [
+  "Clareza sobre responsabilidade de cada modulo.",
+  "Drivers Windows/Docker ficam isolados como adapters, facilitando testes.",
+  "A porta ServerProcessDriver ja esta posicionada corretamente para futuros modos (ex: systemd service, podman).",
+  "Adequacao ao exemplo node-ts-service e as diretrizes de arquitetura do AGENTS.md."
+]
+losses = [
+  "Mudanca de caminhos de import em todos os arquivos e testes.",
+  "Curva de aprendizado momentanea para quem ja conhecia a estrutura flat."
+]
+risks = [
+  "Imports quebrados se algum teste ou arquivo nao for atualizado.",
+  "Campo main do package.json pode apontar para local errado se nao for conferido."
+]
+
+[consequences]
+text = """
+- Todo arquivo fonte sera movido para um subdiretorio de src/.
+- Os testes devem atualizar seus imports para refletir os novos caminhos.
+- O campo "main" do package.json continuara apontando para dist/index.js, que
+  passa a ser um wrapper.
+- Novas funcionalidades devem ser posicionadas na camada apropriada.
+- A pasta src/utils/ deixara de existir; utilitarios genericos vao para
+  src/shared/.
+"""
+
+[relations]
+supersedes = []
+related = []

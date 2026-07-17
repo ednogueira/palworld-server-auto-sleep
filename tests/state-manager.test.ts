@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { StateManager } from '../src/state-manager';
+import { StateManager } from '../src/domain/state-manager';
 
 describe('StateManager', () => {
   it('aceita transicoes validas', () => {

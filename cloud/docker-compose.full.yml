@@ -1,0 +1,17 @@
+services:
+  palworld-auto-manager:
+    build:
+      context: ..
+      dockerfile: cloud/Dockerfile.manager
+    container_name: palworld-auto-manager
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - .env
+    environment:
+      - MANAGEMENT_MODE=docker
+      - DOCKER_CONTAINER_NAME=palworld-server
+      - GAME_HOST=0.0.0.0
+      - GAME_PORT=8211
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

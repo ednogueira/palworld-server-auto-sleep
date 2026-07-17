@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { IdleMonitor } from '../src/idle-monitor';
-import type { PalworldApi } from '../src/palworld-api';
-import { StateManager } from '../src/state-manager';
+import { IdleMonitor } from '../src/application/idle-monitor';
+import type { PalworldApi } from '../src/adapters/palworld/palworld-api';
+import { StateManager } from '../src/domain/state-manager';
 
 function createLogger() {
   return {

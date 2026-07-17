@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractPlayerCount } from '../src/utils/player-count';
+import { extractPlayerCount } from '../src/domain/player-count';
 
 describe('extractPlayerCount', () => {
   it('suporta array direto', () => {

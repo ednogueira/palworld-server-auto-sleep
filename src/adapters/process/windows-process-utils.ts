@@ -10,7 +10,7 @@ export interface ProcessSnapshot {
 
 function ensureWindows(): void {
   if (process.platform !== 'win32') {
-    throw new Error('Este projeto foi desenhado para Windows.');
+    throw new Error('Este driver foi desenhado para Windows.');
   }
 }
 

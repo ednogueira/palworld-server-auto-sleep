@@ -1,6 +1,6 @@
 import dgram from 'node:dgram';
 import type pino from 'pino';
-import { sleep } from './utils/sleep';
+import { sleep } from '../../shared/sleep';
 
 export interface WakePacketInfo {
   address: string;

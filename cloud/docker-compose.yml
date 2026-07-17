@@ -1,0 +1,53 @@
+# =============================================================================
+# Palworld Dedicated Server - Docker Compose
+# Instância: Oracle Cloud Ubuntu ARM64 (2 OCPU / 12GB RAM)
+# Otimizado para: 5 jogadores no pico, box64 (emulação ARM64)
+# =============================================================================
+#
+# Deposite este arquivo em: /opt/palworld/docker-compose.yml
+# Deposite o .env em:       /opt/palworld/.env
+#
+# A imagem thijsvanloef/palworld-server-docker:latest é multi-arch e suporta
+# arm64 via box64 automaticamente.
+# =============================================================================
+
+services:
+  palworld-server:
+    image: thijsvanloef/palworld-server-docker:latest
+    container_name: palworld-server
+    restart: unless-stopped
+    stop_grace_period: 30s
+    env_file:
+      - .env
+    ports:
+      # Porta do jogo (público)
+      - "8211:8211/udp"
+      # Query port Steam (público - para lista de servidores)
+      - "27015:27015/udp"
+      # REST API (NÃO expor externamente - apenas rede interna)
+      # O mapeamento abaixo é úte apenas para teste local na própria VM.
+      # Se preferir total isolamento, remova a linha e acesse via network interno.
+      - "127.0.0.1:8212:8212/tcp"
+      # RCON (NÃO expor externamente - apenas localhost)
+      - "127.0.0.1:25575:25575/tcp"
+    volumes:
+      # Save e configurações persistem no host
+      - ./palworld-data:/palworld/
+    deploy:
+      resources:
+        limits:
+          # Reserve 1GB de RAM para o SO + future auto-manager
+          memory: 10G
+        reservations:
+          memory: 4G
+    healthcheck:
+      test: ["CMD", "pgrep", "PalServer-Linux"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

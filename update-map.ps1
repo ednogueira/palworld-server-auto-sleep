@@ -24,29 +24,36 @@ Write-Host ''
 # Tenta encontrar pastas de save para detectar se os hashes padrao existem
 $userSaveDirs = Get-ChildItem -Path $appDataPath -Directory -ErrorAction SilentlyContinue
 
-$defaultOldHash = 'BFB1017B4D35A38EDCFF5389EC16A578'
-$defaultNewHash = 'F8C5770D4ED1F3EF6D90BBB274D20CA0'
+# Lista de hashes antigos conhecidos (ordem de preferencia)
+# O script usa o primeiro que encontrar no sistema do usuario
+$defaultOldHashes = @(
+    'F8C5770D4ED1F3EF6D90BBB274D20CA0', # 1a migracao cloud (Windows para Linux)
+    'BFB1017B4D35A38EDCFF5389EC16A578'  # Hash original do servidor Windows
+)
+$defaultNewHash = '44BE3F01B7D3435C91AA2FEE69D74D9E'
 
-# Verifica se os hashes padrao funcionam para algum usuario
-$defaultHashesFound = $false
+# Verifica se algum hash antigo conhecido existe no sistema
+$foundOldHash = $null
 if ($userSaveDirs) {
     foreach ($userDir in $userSaveDirs) {
-        $oldPath = Join-Path $userDir.FullName $defaultOldHash
-        if (Test-Path $oldPath) {
-            $defaultHashesFound = $true
-            break
+        foreach ($candidate in $defaultOldHashes) {
+            $candidatePath = Join-Path $userDir.FullName $candidate
+            if (Test-Path $candidatePath) {
+                $foundOldHash = $candidate
+                break
+            }
         }
+        if ($foundOldHash) { break }
     }
 }
 
-if ($defaultHashesFound) {
-    Write-Host 'Hashes padrao encontrados! Usando:' -ForegroundColor Green
-    Write-Host "  Antigo: $defaultOldHash" -ForegroundColor Gray
-    Write-Host "  Novo:   $defaultNewHash" -ForegroundColor Gray
-    $oldHash = $defaultOldHash
+if ($foundOldHash) {
+    Write-Host "Hash antigo encontrado: $foundOldHash" -ForegroundColor Green
+    Write-Host "Hash novo (cloud):      $defaultNewHash" -ForegroundColor Green
+    $oldHash = $foundOldHash
     $newHash = $defaultNewHash
 } else {
-    Write-Host 'Hashes padrao nao encontrados no seu sistema.' -ForegroundColor Yellow
+    Write-Host 'Nenhum hash antigo conhecido foi encontrado no seu sistema.' -ForegroundColor Yellow
     Write-Host ''
     Write-Host 'Para descobrir seus hashes:'
     Write-Host '  1. Abra o explorador de arquivos e va para:'

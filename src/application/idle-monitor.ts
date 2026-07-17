@@ -1,8 +1,8 @@
 import type pino from 'pino';
-import type { PalworldApi } from './palworld-api';
-import { extractPlayerCount } from './utils/player-count';
-import { sleep } from './utils/sleep';
-import type { ServerState, StateManager } from './state-manager';
+import type { PalworldApi } from '../adapters/palworld/palworld-api';
+import { extractPlayerCount } from '../domain/player-count';
+import type { ServerState, StateManager } from '../domain/state-manager';
+import { sleep } from '../shared/sleep';
 
 export interface IdleMonitorOptions {
   playerCheckIntervalSeconds: number;

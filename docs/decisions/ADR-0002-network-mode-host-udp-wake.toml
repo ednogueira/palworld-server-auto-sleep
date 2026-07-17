@@ -1,0 +1,75 @@
+[metadata]
+id = "ADR-0002"
+title = "network_mode host no container do palworld-auto-manager para UDP wake"
+status = "Aceito"
+date = "2026-07-17"
+
+[context]
+text = """
+Na Fase 2 o auto-sleep manager rodara como container Docker ao lado do container
+palworld-server. Quando o servidor esta parado, o manager precisa escutar a
+porta UDP 8211 para detectar tentativas de conexao dos jogadores (wake). Quando
+um pacote e recebido, o manager para o listener e sobe o container do servidor,
+que tambem precisa escutar na mesma porta UDP 8211.
+
+Existem duas abordagens principais para compartilhar a porta UDP entre manager
+e servidor:
+
+A) Expoes UDP 8211 no host para o manager (network_mode: host ou mapeamento de
+   porta). Quando o manager fecha o socket, o servidor sobe e toma posse da
+   porta.
+B) Mantem UDP 8211 apenas no container palworld-server; o manager envia
+   pacotes wake via rede interna Docker, sem escutar a porta publica.
+
+A opcao B exigiria adaptar o udp-wake-listener para nao abrir socket direto, mas
+apenas rotear pacotes para o container servidor, o que nao e o comportamento
+atual (que escuta a porta do host).
+"""
+
+[decision]
+text = """
+Usar network_mode: host no container palworld-auto-manager na implantacao Linux
+(Oracle Cloud). O container escuta UDP 8211 diretamente na interface do host.
+Quando um wake e detectado, o socket e fechado e o container palworld-server
+inicia, tomando posse da porta.
+
+Essa decisao se aplica ao ambiente de producao Linux. Nao e usada em
+ambientes Windows/Docker Desktop.
+"""
+
+[alternatives]
+items = [
+  { name = "Mapear porta UDP 8211 no compose do manager", reason = "Conflitaria com o mapeamento da mesma porta no palworld-server; apenas um servico pode mapear a mesma porta UDP por vez." },
+  { name = "Opcao B: rede interna Docker sem escutar a porta publica", reason = "Mais isolada, mas exigiria reescrever o udp-wake-listener e nao resolveria a necessidade real: o jogador envia pacotes para o IP publico na porta 8211." }
+]
+
+[tradeoffs]
+gains = [
+  "Simplicidade: nenhuma mudanca no udp-wake-listener.",
+  "O jogador envia pacotes para a mesma porta publica, independente de quem esta escutando.",
+  "Quando o servidor sobe, o manager ja liberou a porta."
+]
+losses = [
+  "Perda do isolamento de rede proporcionado pela rede bridge Docker.",
+  "Nao funciona no Docker Desktop Windows/Mac (network_mode host e suportado apenas em Linux)."
+]
+risks = [
+  "Se o socket do manager nao for fechado a tempo, o container palworld-server podera falhar ao iniciar por EADDRINUSE.",
+  "Qualquer outro processo no host pode conflitar com UDP 8211."
+]
+
+[consequences]
+text = """
+- O docker-compose.full.yml usara network_mode: host para o servico
+  palworld-auto-manager.
+- O servico palworld-server continuara usando rede bridge padrao com mapeamento
+  de portas.
+- O systemd unit tera docker.service como dependencia, garantindo socket
+  disponivel antes do compose subir.
+- A documentacao devera deixar claro que essa configuracao e especifica para
+  Linux.
+"""
+
+[relations]
+supersedes = []
+related = ["ADR-0001"]

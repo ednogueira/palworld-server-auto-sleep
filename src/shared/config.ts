@@ -3,11 +3,15 @@ import path from 'node:path';
 
 export type LogLevel = 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
 
+export type ManagementMode = 'native-windows' | 'docker';
+
 export interface AppConfig {
-  palserverExePath: string;
-  palserverWorkingDirectory: string;
+  managementMode: ManagementMode;
+  palserverExePath?: string;
+  palserverWorkingDirectory?: string;
   palserverArguments: string[];
-  palserverProcessName: string;
+  palserverProcessName?: string;
+  dockerContainerName?: string;
   gameHost: string;
   gamePort: number;
   restApiHost: string;
@@ -22,10 +26,7 @@ export interface AppConfig {
   logLevel: LogLevel;
 }
 
-const REQUIRED_KEYS = [
-  'PALSERVER_EXE_PATH',
-  'PALSERVER_WORKING_DIRECTORY',
-  'PALSERVER_PROCESS_NAME',
+const ALWAYS_REQUIRED_KEYS = [
   'GAME_HOST',
   'GAME_PORT',
   'REST_API_HOST',
@@ -39,6 +40,14 @@ const REQUIRED_KEYS = [
   'WAKE_COOLDOWN_SECONDS',
   'LOG_LEVEL',
 ] as const;
+
+const NATIVE_WINDOWS_REQUIRED_KEYS = [
+  'PALSERVER_EXE_PATH',
+  'PALSERVER_WORKING_DIRECTORY',
+  'PALSERVER_PROCESS_NAME',
+] as const;
+
+const DOCKER_REQUIRED_KEYS = ['DOCKER_CONTAINER_NAME'] as const;
 
 function required(value: string | undefined, key: string): string {
   const trimmed = value?.trim();
@@ -77,6 +86,15 @@ function parseArguments(value: string | undefined): string[] {
   return raw.match(/(?:[^\s"]+|"[^"]*")+/g)?.map((item) => item.replace(/^"|"$/g, '')) ?? [];
 }
 
+function parseManagementMode(value: string | undefined): ManagementMode {
+  const raw = (value?.trim().toLowerCase() ?? 'native-windows');
+  const allowed: ManagementMode[] = ['native-windows', 'docker'];
+  if (!allowed.includes(raw as ManagementMode)) {
+    throw new Error(`MANAGEMENT_MODE invalido: ${raw}. Valores permitidos: ${allowed.join(', ')}`);
+  }
+  return raw as ManagementMode;
+}
+
 function assertPathExists(filePath: string): void {
   if (!fs.existsSync(filePath)) {
     throw new Error(`Caminho nao encontrado: ${filePath}`);
@@ -84,25 +102,41 @@ function assertPathExists(filePath: string): void {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
-  for (const key of REQUIRED_KEYS) {
+  for (const key of ALWAYS_REQUIRED_KEYS) {
     required(env[key], key);
   }
 
-  const palserverExePath = required(env.PALSERVER_EXE_PATH, 'PALSERVER_EXE_PATH');
-  const palserverWorkingDirectory = required(env.PALSERVER_WORKING_DIRECTORY, 'PALSERVER_WORKING_DIRECTORY');
+  const managementMode = parseManagementMode(env.MANAGEMENT_MODE);
 
-  if (!path.isAbsolute(palserverExePath)) {
+  if (managementMode === 'native-windows') {
+    for (const key of NATIVE_WINDOWS_REQUIRED_KEYS) {
+      required(env[key], key);
+    }
+  }
+
+  if (managementMode === 'docker') {
+    for (const key of DOCKER_REQUIRED_KEYS) {
+      required(env[key], key);
+    }
+  }
+
+  const palserverExePath = env.PALSERVER_EXE_PATH?.trim();
+  const palserverWorkingDirectory = env.PALSERVER_WORKING_DIRECTORY?.trim();
+
+  if (palserverExePath && !path.isAbsolute(palserverExePath)) {
     throw new Error('PALSERVER_EXE_PATH deve ser um caminho absoluto.');
   }
-  if (!path.isAbsolute(palserverWorkingDirectory)) {
+  if (palserverWorkingDirectory && !path.isAbsolute(palserverWorkingDirectory)) {
     throw new Error('PALSERVER_WORKING_DIRECTORY deve ser um caminho absoluto.');
   }
 
   return {
+    managementMode,
     palserverExePath,
     palserverWorkingDirectory,
     palserverArguments: parseArguments(env.PALSERVER_ARGUMENTS),
-    palserverProcessName: required(env.PALSERVER_PROCESS_NAME, 'PALSERVER_PROCESS_NAME'),
+    palserverProcessName: env.PALSERVER_PROCESS_NAME?.trim(),
+    dockerContainerName: env.DOCKER_CONTAINER_NAME?.trim(),
     gameHost: required(env.GAME_HOST, 'GAME_HOST'),
     gamePort: parseNumber(env.GAME_PORT, 'GAME_PORT', { min: 1, max: 65535 }),
     restApiHost: required(env.REST_API_HOST, 'REST_API_HOST'),
@@ -119,6 +153,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 }
 
 export function verifyPalserverPath(config: Pick<AppConfig, 'palserverExePath' | 'palserverWorkingDirectory'>): void {
+  if (!config.palserverExePath || !config.palserverWorkingDirectory) {
+    throw new Error('Configuracao nativa do Windows requer PALSERVER_EXE_PATH e PALSERVER_WORKING_DIRECTORY.');
+  }
   assertPathExists(config.palserverExePath);
   assertPathExists(config.palserverWorkingDirectory);
 }

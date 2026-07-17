@@ -5,7 +5,9 @@ Protege sua campanha de Palworld desligando automaticamente o servidor dedicado 
 ## Índice
 
 - [Como funciona](#como-funciona)
-- [Instalação](#instalação)
+- [Modos de operação](#modos-de-operação)
+- [Instalação — Windows nativo](#instalação--windows-nativo)
+- [Instalação — Cloud / Docker](#instalação--cloud--docker)
 - [Configuração](#configuração)
 - [Uso](#uso)
 - [Wake UDP (acordar automaticamente)](#wake-udp-acordar-automaticamente)
@@ -33,7 +35,35 @@ PC desliga → Servidor para → Jogador tenta conectar → Servidor acorda
 
 ---
 
-## Instalação
+## Modos de operação
+
+O projeto suporta dois modos definidos pela variável `MANAGEMENT_MODE`:
+
+| Modo | Descrição | Plataforma |
+|------|-----------|------------|
+| `native-windows` | Comportamento original: spawn direto do `PalServer.exe` | Windows |
+| `docker` | Controla container Palworld via Docker CLI + REST API | Linux / Cloud |
+
+Sem a variável definida, assume `native-windows` para manter compatibilidade total com instalações Windows existentes.
+
+### Arquitetura
+
+```
+src/
+├── domain/        → regras puras (state-manager, player-count)
+├── application/   → casos de uso + ports (process-manager, idle-monitor, ServerProcessDriver)
+├── adapters/      → integrações externas (palworld-api, udp-wake-listener, drivers processo)
+├── shared/        → config, logger, sleep
+└── entrypoints/   → main.ts (fluxo principal)
+```
+
+A abstração `ServerProcessDriver` permite que o `ProcessManager` controle o servidor
+indiferentemente do sistema operacional — Windows usa `tasklist`/`taskkill`/`spawn`,
+Docker usa `docker start`/`stop`/`inspect`.
+
+---
+
+## Instalação — Windows nativo
 
 ### 1. Pré-requisitos
 
@@ -66,23 +96,6 @@ PublicPort=8211
 
 > ⚠️ A porta `8212` (REST API) **não** deve ser exposta na internet. Mantenha-a acessível apenas localmente (firewall bloqueando acesso externo).
 
-### 4. Configure o projeto
-
-Copie o arquivo de exemplo e ajuste:
-
-```bash
-cp .env.example .env
-```
-
-Edite `.env` com as informações do seu servidor:
-
-| Variável | O que preencher |
-|----------|----------------|
-| `PALSERVER_EXE_PATH` | Caminho completo do `PalServer.exe` no seu computador |
-| `PALSERVER_WORKING_DIRECTORY` | Pasta onde o PalServer.exe está |
-| `PALSERVER_PROCESS_NAME` | Nome do processo (veja no Gerenciador de Tarefas) |
-| `REST_API_PASSWORD` | A mesma senha definida em `AdminPassword` no PalWorldSettings.ini |
-
 **Como achar o caminho do PalServer.exe:**
 
 ```
@@ -91,7 +104,84 @@ C:\Program Files (x86)\Steam\steamapps\common\PalServer\PalServer.exe
 
 Se não for esse, localize a pasta do servidor dedicado na sua biblioteca Steam.
 
-### 5. Libere as portas no firewall e roteador
+---
+
+## Instalação — Cloud / Docker
+
+Para rodar o auto-sleep manager em um servidor Linux com Docker (Oracle Cloud, AWS, etc.):
+
+### 1. Pré-requisitos na instância
+
+- Ubuntu 22.04+ (ARM64 ou x86)
+- Docker + Docker Compose v2
+- Container Palworld já rodando (`thijsvanloef/palworld-server-docker`)
+
+### 2. Copiar artefatos
+
+```bash
+scp -r .\src\ ubuntu@seu-servidor:/opt/palworld/auto-manager/
+scp -r .\cloud\ ubuntu@seu-servidor:/opt/palworld/auto-manager/
+scp .\package.json .\tsconfig.json ubuntu@seu-servidor:/opt/palworld/auto-manager/
+```
+
+### 3. Subir o manager
+
+```bash
+ssh ubuntu@seu-servidor
+cd /opt/palworld/auto-manager
+cp cloud/.env.docker.example cloud/.env
+nano cloud/.env   # preencher senhas
+sudo docker compose -f cloud/docker-compose.full.yml up -d
+```
+
+### 4. (Opcional) systemd para boot automático
+
+```bash
+sudo cp cloud/palworld-auto-manager.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable palworld-auto-manager
+sudo systemctl start palworld-auto-manager
+```
+
+> **Detalhes completos de deploy em:** [`cloud/deploy-test-steps.md`](cloud/deploy-test-steps.md)
+
+---
+
+## Configuração
+
+### Windows nativo
+
+Configure as variáveis no `.env`:
+
+| Variável | O que preencher |
+|----------|----------------|
+| `MANAGEMENT_MODE` | `native-windows` (ou omita — é o padrão) |
+| `PALSERVER_EXE_PATH` | Caminho completo do `PalServer.exe` |
+| `PALSERVER_WORKING_DIRECTORY` | Pasta onde o PalServer.exe está |
+| `PALSERVER_PROCESS_NAME` | Nome do processo (veja no Gerenciador de Tarefas) |
+| `REST_API_PASSWORD` | A mesma senha definida em `AdminPassword` no PalWorldSettings.ini |
+
+### Modo Docker
+
+Use o template em `cloud/.env.docker.example`:
+
+| Variável | O que preencher |
+|----------|----------------|
+| `MANAGEMENT_MODE` | `docker` |
+| `DOCKER_CONTAINER_NAME` | Nome do container Palworld (ex: `palworld-server`) |
+| `REST_API_PASSWORD` | A mesma senha do `.env` do servidor Palworld |
+
+### Variáveis comuns (ambos os modos)
+
+| Variável | Padrão | Descrição |
+|----------|--------|-----------|
+| `GAME_HOST` | `0.0.0.0` | IP do wake listener |
+| `GAME_PORT` | `8211` | Porta UDP do jogo |
+| `PLAYER_CHECK_INTERVAL_SECONDS` | `60` | Frequência de verificação de jogadores |
+| `EMPTY_SERVER_TIMEOUT_MINUTES` | `10` | Tempo ocioso antes de desligar |
+| `LOG_LEVEL` | `info` | Nível de log (`info`, `debug`, `trace`) |
+
+### Firewall e roteador
 
 | Porta | Protocolo | Destino | Observação |
 |-------|-----------|---------|------------|
@@ -210,12 +300,23 @@ Dentro da pasta com seu ID Steam, você verá pastas com nomes de **32 caractere
 - **HASH ANTIGO** = pasta com dados de mapa do servidor antigo
 - **HASH NOVO** = pasta criada quando conectou no novo servidor
 
+**Hashes atualizados (Fase 2 — servidor cloud):**
+
+| Hash | Origem |
+|------|--------|
+| `BFB1017B4D35A38EDCFF5389EC16A578` | Hash original do servidor Windows local |
+| `F8C5770D4ED1F3EF6D90BBB274D20CA0` | 1ª migração para cloud (Windows → Linux) |
+| **`44BE3F01B7D3435C91AA2FEE69D74D9E`** | **Hash atual do servidor cloud** |
+
+O script detecta automaticamente qual hash antigo você possui (se já migrou antes ou
+ainda está no Windows original) e copia os dados para o hash cloud atual.
+
 **Comportamento do script:**
 
 | Situação | O que acontece |
 |----------|----------------|
-| Hashes padrão encontrados | Usa automaticamente, sem perguntar |
-| Hashes não encontrados | Pede para digitar os hashes manualmente |
+| Hash antigo conhecido encontrado | Usa automaticamente, sem perguntar |
+| Nenhum hash conhecido encontrado | Pede para digitar os hashes manualmente |
 | Hash inválido | Valida formato de 32 caracteres hexadecimais |
 | Backup automático | Cria backup com sufixo `_backup_PS` |
 | Múltiplos usuários Steam | Processa todos automaticamente |

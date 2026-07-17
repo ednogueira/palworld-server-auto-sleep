@@ -1,0 +1,92 @@
+[metadata]
+id = "ADR-0003"
+title = "Infraestrutura cloud: Oracle Cloud ARM64, Docker, DuckDNS"
+status = "Aceito"
+date = "2026-07-17"
+
+[context]
+text = """
+O servidor Palworld precisava ser migrado do Windows local para a nuvem para
+permitir que os jogadores acessassem independentemente do PC do administrador
+estar ligado. A instancia precisava caber no free tier da Oracle Cloud
+(2 OCPU ARM64, 12GB RAM), que esta significativamente abaixo do minimo oficial
+recomendado pelo Palworld (4 cores x86, 16GB+ RAM).
+
+As principais questoes a resolver:
+- ARM64 vs x86: a imagem oficial do Palworld server e x86_64, entao e preciso
+  emulacao (box64) ou imagem que ja inclua esse suporte.
+- RAM limitada: 12GB para SO + servidor Palworld + auto-sleep manager futuro.
+- IP efemero: a Oracle nao oferece IP fixo no free tier, entao os jogadores
+  precisam de um DNS dinamico para conectar.
+- Save migration: o save existente no Windows precisava ser transferido e
+  adaptado ao hash de servidor Linux.
+"""
+
+[decision]
+text = """
+Usar a seguinte stack na Oracle Cloud:
+
+1. **Imagem Docker:** `thijsvanloef/palworld-server-docker` (multi-arch, suporta
+   ARM64 via box64). Substitui a instalacao manual do Palworld Server no Windows.
+
+2. **Swap + tuning:** 8GB de swap com `vm.swappiness=10` para emergencias de
+   RAM; tuning de kernel UDP para latencia baixa.
+
+3. **DuckDNS:** DNS dinamico via script com cron a cada 5 minutos, resolvendo o
+   IP efemero da instancia. Jogadores conectam via `joga10.duckdns.org:8211`.
+
+4. **Auto-update:** `AUTO_UPDATE_ENABLED=true` e `TARGET_MANIFEST_ID` removido
+   para receber updates do jogo automaticamente, mesmo com o risco de box64
+   quebrar em alguma atualizacao.
+
+5. **Firewall:** UFW na instancia + Security Lists no console Oracle. Porta 8212
+   (REST API) e 25575 (RCON) bloqueadas externamente.
+
+6. **Save migration:** Script `03-restore-save.sh` que sobe o servidor, detecta
+   o hash gerado pelo Linux, copia o save do hash antigo e ajusta o
+   `DedicatedServerName`.
+
+7. **Otimizacoes free tier:** `PAL_SPAWN_NUM_RATE=0.7`, `DROP_ITEM_MAX_NUM=1000`,
+   `WORKER_THREADS_SERVER=2`, `SUPPLY_DROP_SPAN=360` e outras para rodar dentro
+   de 12GB RAM / 2 OCPU.
+"""
+[alternatives]
+items = [
+  { name = "Servidor x86 pago (AWS/GCP)", reason = "Eliminaria a complexidade do box64/ARM64 e teria mais recursos, mas custa $30-60/mes vs free tier." },
+  { name = "Manter no Windows local com Wake-on-LAN", reason = "Nao resolve o problema principal: o PC do admin precisaria ficar ligado 24/7." },
+  { name = "Instalar Palworld nativamente via SteamCMD no Linux ARM64", reason = "A Steam nao distribui binarios ARM64 do Palworld; a emulacao box64 seria necessaria de qualquer forma." }
+]
+
+[tradeoffs]
+gains = [
+  "Custo zero de infraestrutura (free tier Oracle).",
+  "Disponibilidade 24/7 independente do PC do administrador.",
+  "Docker facilita backups, updates e reproducao do ambiente.",
+  "Multi-arquitetura da imagem `thijsvanloef/palworld-server-docker` simplifica o deploy ARM64."
+]
+losses = [
+  "Complexidade adicional do box64/ARM64 e possiveis incompatibilidades.",
+  "IP efemero exige DuckDNS; qualquer falha no cron tira o DNS do ar.",
+  "Swap de 8GB e tuning necessario para compensar RAM limitada."
+]
+risks = [
+  "box64 pode quebrar com updates do Palworld que introduzam instrucoes x86 incomessiveis.",
+  "Oracle Cloud pode revogar o free tier a qualquer momento.",
+  "DuckDNS depende de servico terceiro gratuito."
+]
+
+[consequences]
+text = """
+- Todo deploy futuro deve considerar a limitacao ARM64 (ex: build do
+  auto-sleep manager em multi-stage com node:22-alpine para ARM64).
+- O DuckDNS requer manutencao: se o token expirar ou o cron parar, os jogadores
+  perdem acesso.
+- Scripts de restore de save precisam detectar automaticamente o hash gerado
+  pelo servidor Linux, que e imprevisivel.
+- O .env.example versionado nao contem senhas reais; o .env real fica apenas na
+  instancia.
+"""
+
+[relations]
+supersedes = []
+related = ["ADR-0001", "ADR-0002"]

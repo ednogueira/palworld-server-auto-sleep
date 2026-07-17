@@ -8,6 +8,13 @@ Este diretório guarda ADRs e decisões relevantes do projeto.
 - escolha relevante de integração, segurança, testes, operação ou deploy;
 - alterações com trade-offs duradouros.
 
-## Convenção sugerida
-- `ADR-0001-titulo-curto.md`
-- `ADR-0002-titulo-curto.md`
+## ADRs registrados
+
+| ID | Título | Status |
+|----|--------|--------|
+| ADR-0001 | Estrutura em camadas leves | Aceito |
+| ADR-0002 | network_mode host para UDP wake | Aceito |
+| ADR-0003 | Infraestrutura cloud Oracle | Aceito |
+
+## Convenção
+- `ADR-XXXX-titulo-curto.toml` (formato Toon)

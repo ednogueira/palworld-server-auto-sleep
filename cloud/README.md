@@ -1,46 +1,54 @@
-# Palworld Dedicated Server - Migração para Oracle Cloud (Fase 1)
+# Palworld Server — Deploy completo na Oracle Cloud
 
-Este diretório contém os scripts e configurações para migrar o servidor dedicado de Palworld do Windows local para uma instância Ubuntu ARM64 na Oracle Cloud usando Docker.
+Guia unificado para implantar o servidor Palworld + auto-sleep manager em
+uma instância Ubuntu ARM64 na Oracle Cloud.
 
-## Arquivos
+## Stack
+
+| Componente | Tecnologia |
+|------------|------------|
+| Servidor Palworld | `thijsvanloef/palworld-server-docker` |
+| Auto-sleep manager | Node.js 22 + Docker (`palworld-auto-manager`) |
+| DNS dinâmico | DuckDNS (`joga10.duckdns.org`) |
+| Firewall | UFW + Security Lists Oracle Cloud |
+| SO | Ubuntu 22.04 ARM64 (2 OCPU, 12GB RAM free tier) |
+
+## Arquivos neste diretório
 
 | Arquivo | Descrição |
 |---------|-----------|
-| `01-prepare-instance.sh` | Prepara a instância: instala Docker, cria swap, tuning de kernel |
-| `02-configure-firewall.sh` | Configura o UFW com as portas corretas |
-| `docker-compose.yml` | Define o container do Palworld Server |
-| `.env.example` | Template de configuração (copiar para `.env` e editar) |
-| `03-restore-save.sh` | Restaura o save migrado do Windows para o novo hash |
+| `01-prepare-instance.sh` | Prepara a instância: Docker, swap 8GB, tuning kernel |
+| `02-configure-firewall.sh` | UFW: libera 8211/udp, 27015/udp; bloqueia 8212, 25575 |
+| `docker-compose.yml` | Compose do servidor Palworld (server apenas) |
+| `docker-compose.full.yml` | Compose unificado: server + auto-sleep manager |
+| `Dockerfile.manager` | Multi-stage build do auto-sleep manager |
+| `.env.example` | Template de config do servidor Palworld (sem senhas reais) |
+| `.env.docker.example` | Template de config do auto-sleep manager modo docker |
+| `03-restore-save.sh` | Restaura save migrado do Windows para o novo hash |
 | `backup-save-windows.ps1` | Compacta e envia o save do Windows via SCP |
-| `duckdns-updater.sh` | Configura DNS dinâmico (DuckDNS) para IP efêmero |
-| `oracle-security-lists.md` | Instruções para liberar portas no console da Oracle |
+| `duckdns-updater.sh` | DNS dinâmico DuckDNS + cron + logrotate |
+| `oracle-security-lists.md` | Instruções para liberar portas no console Oracle |
+| `palworld-auto-manager.service` | systemd unit para boot automático do manager |
 
 ## Pré-requisitos
 
-- Instância Ubuntu ARM64 na Oracle Cloud (2 OCPU / 12GB RAM free tier)
+- Instância Ubuntu ARM64 na Oracle Cloud (free tier, 2 OCPU / 12GB)
 - Acesso SSH à instância
-- Save atual do Palworld no Windows em:
-  ```
-  C:\Program Files (x86)\Steam\steamapps\common\PalServer\Pal\Saved\SaveGames\0\F8C5770D4ED1F3EF6D90BBB274D20CA0\
-  ```
-- Chave SSH (.pem) para acessar a instância
+- Save atual do Palworld no Windows (em
+  `Pal\Saved\SaveGames\0\<hash_antigo>\`)
+- Chave SSH `.pem` para acessar a instância
 
-## Passo a Passo
+## Passo a passo
 
-### Passo 1 — Preparar a instância
-
-Na instância (via SSH), suba os arquivos `cloud/` e execute:
+### 1. Preparar a instância
 
 ```bash
-# Transferir os arquivos (do seu computador)
 scp -r cloud/ ubuntu@<IP_DA_INSTANCIA>:/tmp/
-
-# Na instância
 ssh ubuntu@<IP_DA_INSTANCIA>
 sudo bash /tmp/cloud/01-prepare-instance.sh
 ```
 
-### Passo 2 — Depositar configuração
+### 2. Depositar configuração do servidor
 
 ```bash
 sudo mkdir -p /opt/palworld
@@ -50,168 +58,178 @@ sudo cp /tmp/cloud/02-configure-firewall.sh /opt/palworld/
 sudo cp /tmp/cloud/03-restore-save.sh /opt/palworld/
 sudo cp /tmp/cloud/duckdns-updater.sh /opt/palworld/
 
-# EDITAR o .env com sua senha real
-sudo nano /opt/palworld/.env
+sudo nano /opt/palworld/.env   # preencher ADMIN_PASSWORD
 ```
 
-**Obrigatório:** Edite o `.env` e substitua `ADMIN_PASSWORD=trocar-por-senha-forte` pela sua senha real (a mesma que você usa no auto-sleep manager). O servidor NÃO funciona sem isso.
-
-O `.env.example` na pasta `cloud/` NÃO contém senhas reais — é seguro versionar no git.
-
-### Passo 3 — Configurar firewall
+### 3. Configurar firewall
 
 ```bash
 sudo bash /opt/palworld/02-configure-firewall.sh
 ```
 
-### Passo 4 — Liberar portas no console da Oracle Cloud
+### 4. Liberar portas no console Oracle Cloud
 
-**Esta etapa NÃO é feita via SSH.** Acesse o console web da Oracle Cloud:
-
-1. Vá em **Networking → Virtual Cloud Networks**
-2. Clique na VCN da sua instância
-3. Vá em **Security Lists** (ou **Network Security Groups**)
-4. Adicione as seguintes regras de Ingress:
+Veja detalhes em `oracle-security-lists.md`.
 
 | Source | Protocol | Port | Descrição |
 |--------|----------|------|-----------|
 | `0.0.0.0/0` | UDP | 8211 | Palworld jogo |
 | `0.0.0.0/0` | UDP | 27015 | Steam query |
 
-5. **NÃO** libere as portas 8212 (REST API) nem 25575 (RCON) externamente.
+**Não** liberar 8212 (REST API) nem 25575 (RCON) externamente.
 
-Veja detalhes em `oracle-security-lists.md`.
-
-### Passo 5 — Configurar DNS dinâmico (DuckDNS)
-
-Como o IP da instância é efêmero, configuramos o DuckDNS para que os amigos conectem via `joga10.duckdns.org:8211`:
-
-1. Acesse [duckdns.org](https://www.duckdns.org)
-2. Faça login e crie um subdomínio (ex.: `joga10`)
-3. Anote o **token** exibido na página
-4. Na instância:
+### 5. Configurar DuckDNS
 
 ```bash
-# Editar o script com seu token
-sudo nano /opt/palworld/duckdns-updater.sh
-# Modificar as linhas:
-#   DUCKDNS_DOMAIN="joga10"
-#   DUCKDNS_TOKEN="seu-token-aqui"
-
-# OU criar arquivo de config:
 sudo tee /opt/palworld/.duckdns << 'EOF'
 DUCKDNS_DOMAIN=joga10
 DUCKDNS_TOKEN=seu-token-aqui
 EOF
 sudo chmod 600 /opt/palworld/.duckdns
-
-# Instalar cron
 sudo bash /opt/palworld/duckdns-updater.sh --install
-
-# Testar manualmente
-sudo bash /opt/palworld/duckdns-updater.sh
+sudo bash /opt/palworld/duckdns-updater.sh   # testar
 ```
 
-Os jogadores conectam em: `joga10.duckdns.org:8211`
+Jogadores conectam em: `joga10.duckdns.org:8211`
 
-### Passo 6 — Transferir e restaurar o save
+### 6. Transferir e restaurar o save
 
 **No Windows (PowerShell):**
 
 ```powershell
-.\cloud\backup-save-windows.ps1 -InstanceIp <IP_DA_INSTANCIA> -SshKeyPath C:\caminho\para\sua-chave.pem
+.\cloud\backup-save-windows.ps1 -InstanceIp <IP> -SshKeyPath C:\caminho\chave.pem
 ```
 
-**Na instância (via SSH):**
+**Na instância:**
 
 ```bash
 sudo bash /opt/palworld/03-restore-save.sh
 ```
 
-Este script:
-1. Verifica se o save do Windows foi transferido para `/opt/palworld/save-backup/`
-2. Sobe o servidor pela primeira vez (baixa e instala o Palworld — leva vários minutos)
-3. Detecta o hash novo gerado pelo servidor
-4. Para o servidor
-5. Copia os arquivos de save do hash antigo para o novo
-6. Ajusta o `DedicatedServerName` no `GameUserSettings.ini`
-7. Exibe o hash novo para os jogadores
+> Acompanhe os logs do servidor durante o restore:
+> `sudo docker compose logs -f palworld-server`
 
-Acompanhe os logs durante a execução:
+### 7. Subir o auto-sleep manager
+
+Copiar artefatos do manager para a instância:
 
 ```bash
-# Em outro terminal SSH, durante o passo 6:
-cd /opt/palworld
-sudo docker compose logs -f palworld-server
+# Do seu Windows (PowerShell com SCP)
+scp -r .\src\ ubuntu@joga10.duckdns.org:/opt/palworld/auto-manager/
+scp -r .\cloud\ ubuntu@joga10.duckdns.org:/opt/palworld/auto-manager/
+scp .\package.json .\tsconfig.json ubuntu@joga10.duckdns.org:/opt/palworld/auto-manager/
 ```
 
-### Passo 7 — Re-subir o servidor e validar
+Na instância:
 
 ```bash
+ssh ubuntu@joga10.duckdns.org
+cd /opt/palworld/auto-manager
+cp cloud/.env.docker.example .env   # criar baseado no template
+cp .env cloud/.env                   # compose espera .env dentro de cloud/
+nano .env                            # preencher senhas
+```
+
+O `.env` do manager deve ter:
+
+```
+MANAGEMENT_MODE=docker
+DOCKER_CONTAINER_NAME=palworld-server
+REST_API_HOST=127.0.0.1
+REST_API_PORT=8212
+REST_API_USERNAME=admin
+REST_API_PASSWORD=<mesma do .env do palworld-server>
+GAME_HOST=0.0.0.0
+GAME_PORT=8211
+PLAYER_CHECK_INTERVAL_SECONDS=60
+EMPTY_SERVER_TIMEOUT_MINUTES=10
+LOG_LEVEL=info
+```
+
+Build + subir:
+
+```bash
+sudo cp cloud/docker-compose.full.yml /opt/palworld/
+sudo cp cloud/Dockerfile.manager /opt/palworld/
 cd /opt/palworld
-sudo docker compose up -d
-sudo docker compose logs -f palworld-server
+sudo docker compose -f cloud/docker-compose.full.yml up -d palworld-auto-manager
 ```
 
-Valide:
-- [ ] Logs sem erros
-- [ ] REST API responde internamente:
-  ```bash
-  curl -u admin:<ADMIN_PASSWORD> http://127.0.0.1:8212/v1/api/info
-  ```
-- [ ] Um jogador conecta e vê o mundo correto (bases, Pals, progresso)
-- [ ] RAM/CPU dentro do aceitável: `sudo docker stats palworld-server`
-- [ ] Conexão via `joga10.duckdns.org:8211` funciona
+Verificar logs:
 
-### Passo 8 — Instruir os jogadores (update-map)
-
-Cada jogador precisará rodar `update-map.ps1` no próprio PC Windows para migrar o mapa do hash antigo para o novo:
-
-```
-Hash antigo: F8C5770D4ED1F3EF6D90BBB274D20CA0
-Hash novo:   <exibido pelo 03-restore-save.sh>
+```bash
+sudo docker logs -f palworld-auto-manager
 ```
 
-Os jogadores devem:
-1. Conectar no novo servidor **uma vez** (para criar a pasta com hash novo)
-2. Fechar o Palworld
-3. Rodar `update-map.ps1`
-4. Reconectar — o mapa estará preservado
+### 8. (Opcional) systemd para boot automático
 
-## Comandes úteis
+```bash
+sudo cp cloud/palworld-auto-manager.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable palworld-auto-manager
+sudo systemctl start palworld-auto-manager
+```
+
+## Testar cenários
+
+### A — Servidor já rodando
+- Manager detecta servidor em execução e entra em modo monitoramento
+- Log: `[RUNNING] Servidor ja estava em execucao.`
+
+### B — Idle timeout
+- `docker stop palworld-server`
+- Manager detecta parada e ativa wake listener
+- Log: `[STOPPED] Servidor parou inesperadamente.` → `[STOPPED] Wake listener ativo`
+
+### C — Wake via UDP
+- Servidor parado + manager escutando → jogador tenta conectar
+- Log: `[WAKE] Pacote recebido` → `[STARTING]` → `[RUNNING]`
+
+## Rollback
+
+Se algo der errado, os composes são independentes:
+
+```bash
+# Parar só o manager
+sudo docker compose -f cloud/docker-compose.full.yml down palworld-auto-manager
+
+# O palworld-server continua rodando
+# Volte ao modo native-windows no Windows sem alterações
+```
+
+## Comandos úteis
 
 | Comando | Descrição |
 |---------|-----------|
-| `docker compose up -d` | Subir o servidor em background |
-| `docker compose down` | Parar o servidor |
-| `docker compose restart` | Reiniciar o servidor |
-| `docker compose logs -f` | Ver logs em tempo real |
+| `docker compose up -d` | Subir servidor Palworld |
+| `docker compose down` | Parar servidor |
+| `docker compose logs -f` | Logs do servidor em tempo real |
 | `docker stats palworld-server` | Monitorar CPU/RAM |
-| `docker compose exec palworld-server rcon-cli` | Abrir console RCON |
-| `docker compose exec palworld-server backup` | Criar backup manual |
-| `free -h` | Ver uso de memória (incluindo swap) |
-| `ufw status verbose` | Ver regras de firewall |
+| `docker exec palworld-server rcon-cli` | Console RCON |
+| `docker exec palworld-server backup` | Backup manual |
+| `docker compose -f cloud/docker-compose.full.yml up -d` | Subir manager |
+| `docker logs -f palworld-auto-manager` | Logs do manager |
+| `free -h` | Uso de memória + swap |
+| `ufw status verbose` | Regras de firewall |
 
-## Otimizações aplicadas (2 OCPU / 12GB RAM)
+## Otimizações (2 OCPU / 12GB)
 
-Por estarmos abaixo do mínimo oficial (4 cores / 16GB), as seguintes otimizações foram aplicadas no `.env`:
-
-| Configuração | Valor | Motivo |
-|--------------|-------|--------|
+| Config | Valor | Motivo |
+|--------|-------|--------|
 | `WORKER_THREADS_SERVER` | 2 | Aproveitar 2 OCPUs |
-| `ENABLE_PERF_THREADING_ARGS` | true | Habilitar threads de performance |
-| `BACKUP_CRON_EXPRESSION` | `0 4 * * *` | Backup às 4am (baixo uso) |
-| `AUTO_UPDATE_ENABLED` | true | Updates automáticos (você pediu para remover version lock) |
-| `bENABLE_NON_LOGIN_PENALTY` | true | Penalidade por não login (mantido do seu .ini) |
-| `bENABLE_FAST_TRAVEL` | true | Fast travel habilitado (mantido do seu .ini) |
+| `ENABLE_PERF_THREADING_ARGS` | true | Threads de performance |
+| `BACKUP_CRON_EXPRESSION` | `0 4 * * *` | Backup às 4am |
+| `AUTO_UPDATE_ENABLED` | true | Updates automáticos |
 
-Adicionalmente:
-- Swap de 8GB criado para emergências de RAM
-- `vm.swappiness=10` (preferir RAM, swap só em emergência)
+- Swap de 8GB + `vm.swappiness=10`
 - Tuning de kernel UDP para latência baixa
-- Limites de Docker: servidor usa até 10GB RAM (1GB reservado para SO + auto-manager)
+- Limite de RAM do Docker: 10GB para o servidor
 
-## Próximas fases
+## Observações importantes
 
-- **Fase 2:** Adaptação do auto-sleep manager para Linux/Docker (manterá compatibilidade Windows)
-- **Fase 3:** Frontend Angular + nginx reverse proxy + auth
+- `network_mode: host` no manager → compartilha rede do host, `REST_API_HOST` deve
+  ser `127.0.0.1`
+- Docker socket montado em `/var/run/docker.sock` para `docker start/stop` de
+  dentro do container
+- `.env.example` e `.env.docker.example` não contêm senhas reais — seguros para
+  versionar

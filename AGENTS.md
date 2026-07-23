@@ -31,6 +31,16 @@ Descreva domínio, integrações, comandos úteis, regras de validação e conve
 - Use o formato toml (Toon) para redução de token
 - Considere o template `~/.config/opencode/templates/adr-template.md`
 
+## Versionamento (SemVer)
+- Toda alteração com commit deve incluir um **bump de versão** em `package.json` seguindo SemVer (`MAJOR.MINOR.PATCH`).
+  - `PATCH` (ex.: `1.0.0` → `1.0.1`): correções, ajustes, refactors sem mudança de comportamento observável.
+  - `MINOR` (ex.: `1.0.0` → `1.1.0`): nova feature mantendo compatibilidade.
+  - `MAJOR` (ex.: `1.0.0` → `2.0.0`): mudança incompatível (breaking change).
+- Atualizar `CHANGELOG.md` com a nova entrada na seção `[Unreleased]` antes de mover para a release versionada.
+- Criar tag Git anotada no formato `vX.Y.Z` referenciando o commit da release.
+- A tag de imagem Docker do manager deve refletir a versão: `cloud-palworld-auto-manager:X.Y.Z` além de `:latest`.
+- Detalhes completos na ADR-0006.
+
 <!-- headroom:rtk-instructions -->
 # RTK (Rust Token Killer) - Token-Optimized Commands
 

@@ -6,6 +6,13 @@ e este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-07-23
+
+### Changed
+- `AGENTS.md`: adicionada diretriz de versionamento SemVer exigindo bump
+  de versão em `package.json` a cada commit, com atualizacao do
+  `CHANGELOG.md` e tag Git correspondente.
+
 ## [1.0.0] - 2026-07-23
 
 ### Added

@@ -44,7 +44,6 @@ palworld-auto-manager/
 │   │   ├── logger.ts                       # Pino com timestamp em timezone local
 │   │   └── sleep.ts
 │   └── entrypoints/
-│       ├── index.ts                        # Entrypoint unico: chama bootstrap() e mantem o processo vivo
 │       └── bootstrap.ts                    # Funcao bootstrap(dependencies) com injecao opcional de api/driver/backup
 ├── tests/
 │   ├── process-manager.test.ts             # Cobre save falho, backup pre, delays, abort

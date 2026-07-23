@@ -1,6 +1,6 @@
 # Palworld Server Auto Sleep
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue)](https://github.com/ednogueira/palworld-server-auto-sleep/releases/tag/v1.0.0)
+[![Version](https://img.shields.io/badge/version-1.0.2-blue)](https://github.com/ednogueira/palworld-server-auto-sleep/releases/tag/v1.0.2)
 [![Node.js](https://img.shields.io/badge/Node.js-22+-green)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://www.typescriptlang.org/)
 [![Docker](https://img.shields.io/badge/Docker-supported-2496ED)](https://www.docker.com/)
@@ -59,11 +59,13 @@ Sem a variável definida, assume `native-windows` para manter compatibilidade to
 
 ```
 src/
-├── domain/        → regras puras (state-manager, player-count)
-├── application/   → casos de uso + ports (process-manager, idle-monitor, ServerProcessDriver)
-├── adapters/      → integrações externas (palworld-api, udp-wake-listener, drivers processo)
-├── shared/        → config, logger, sleep
-└── entrypoints/   → index.ts (fluxo principal)
+├── index.ts              → entrypoint: chama bootstrap() e mantem o processo vivo
+├── domain/               → regras puras (state-manager, player-count)
+├── application/          → casos de uso + ports (process-manager, idle-monitor, ServerProcessDriver, BackupService)
+├── adapters/             → integracoes externas (palworld-api, udp-wake-listener, drivers processo, backup services)
+├── shared/               → config, logger, sleep
+└── entrypoints/
+    └── bootstrap.ts      → logica de inicializacao (state machine, idle monitor, signal handlers)
 ```
 
 A abstração `ServerProcessDriver` permite que o `ProcessManager` controle o servidor
@@ -318,7 +320,7 @@ Este script copia os dados de mapa da pasta com hash antigo para a pasta com has
 3. No PowerShell, execute:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\update-map.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\update-map.ps1
 ```
 
 4. Conecte no servidor — seu mapa estará preservado

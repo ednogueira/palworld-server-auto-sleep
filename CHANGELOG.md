@@ -6,6 +6,25 @@ e este projeto adere a [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-07-23
+
+### Fixed
+- `README.md`: badge de versão atualizada de `1.0.0` para `1.0.2` (estava
+  apontando para release inexistente).
+- `README.md`: diagrama de arquitetura corrigido — `src/index.ts` está na
+  raiz de `src/` (não em `entrypoints/`) e chama `bootstrap()` de
+  `src/entrypoints/bootstrap.ts`.
+- `README.md`: caminho do `update-map.ps1` corrigido de `.\update-map.ps1`
+  para `.\scripts\update-map.ps1`.
+- `docs/architecture/overview.md`: removida referência a
+  `src/entrypoints/index.ts` (arquivo deletado na v1.0.0).
+- `AGENTS.md`: diretriz de versionamento agora exige atualizar a badge de
+  versão no `README.md` a cada bump.
+
+### Added
+- `LICENSE`: adicionado arquivo MIT (necessário para a badge de licenca
+  apontar para arquivo valido).
+
 ## [1.0.1] - 2026-07-23
 
 ### Changed

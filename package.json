@@ -1,6 +1,6 @@
 {
   "name": "palworld-server-auto-sleep",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Protege sua campanha de Palworld desligando automaticamente o servidor dedicado quando não há jogadores online. Evita morte dos Pals, deterioração da base e perda de progressão. Quando um jogador tenta conectar, o servidor acorda automaticamente do último save.",
   "main": "dist/index.js",

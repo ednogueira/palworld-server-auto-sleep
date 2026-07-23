@@ -39,6 +39,7 @@ Descreva domínio, integrações, comandos úteis, regras de validação e conve
 - Atualizar `CHANGELOG.md` com a nova entrada na seção `[Unreleased]` antes de mover para a release versionada.
 - Criar tag Git anotada no formato `vX.Y.Z` referenciando o commit da release.
 - A tag de imagem Docker do manager deve refletir a versão: `cloud-palworld-auto-manager:X.Y.Z` além de `:latest`.
+- Atualizar a **badge de versão** no `README.md` (link e número) para refletir a nova versão.
 - Detalhes completos na ADR-0006.
 
 <!-- headroom:rtk-instructions -->

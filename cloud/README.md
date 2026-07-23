@@ -9,7 +9,7 @@ uma instância Ubuntu ARM64 na Oracle Cloud.
 |------------|------------|
 | Servidor Palworld | `thijsvanloef/palworld-server-docker` |
 | Auto-sleep manager | Node.js 22 + Docker (`palworld-auto-manager`) |
-| DNS dinâmico | DuckDNS (`joga10.duckdns.org`) |
+| DNS dinâmico | DuckDNS (`<SUBDOMINIO>.duckdns.org`) |
 | Firewall | UFW + Security Lists Oracle Cloud |
 | SO | Ubuntu 22.04 ARM64 (2 OCPU, 12GB RAM free tier) |
 
@@ -82,7 +82,7 @@ Veja detalhes em `oracle-security-lists.md`.
 
 ```bash
 sudo tee /opt/palworld/.duckdns << 'EOF'
-DUCKDNS_DOMAIN=joga10
+DUCKDNS_DOMAIN=<SUBDOMINIO>
 DUCKDNS_TOKEN=seu-token-aqui
 EOF
 sudo chmod 600 /opt/palworld/.duckdns
@@ -90,7 +90,7 @@ sudo bash /opt/palworld/duckdns-updater.sh --install
 sudo bash /opt/palworld/duckdns-updater.sh   # testar
 ```
 
-Jogadores conectam em: `joga10.duckdns.org:8211`
+Jogadores conectam em: `<SUBDOMINIO>.duckdns.org:8211`
 
 ### 6. Transferir e restaurar o save
 
@@ -115,15 +115,15 @@ Copiar artefatos do manager para a instância:
 
 ```bash
 # Do seu Windows (PowerShell com SCP)
-scp -r .\src\ ubuntu@joga10.duckdns.org:/opt/palworld/auto-manager/
-scp -r .\cloud\ ubuntu@joga10.duckdns.org:/opt/palworld/auto-manager/
-scp .\package.json .\tsconfig.json ubuntu@joga10.duckdns.org:/opt/palworld/auto-manager/
+scp -r .\src\ ubuntu@<SUBDOMINIO>.duckdns.org:/opt/palworld/auto-manager/
+scp -r .\cloud\ ubuntu@<SUBDOMINIO>.duckdns.org:/opt/palworld/auto-manager/
+scp .\package.json .\tsconfig.json ubuntu@<SUBDOMINIO>.duckdns.org:/opt/palworld/auto-manager/
 ```
 
 Na instância:
 
 ```bash
-ssh ubuntu@joga10.duckdns.org
+ssh ubuntu@<SUBDOMINIO>.duckdns.org
 cd /opt/palworld/auto-manager
 cp cloud/.env.docker.example .env   # criar baseado no template
 cp .env cloud/.env                   # compose espera .env dentro de cloud/

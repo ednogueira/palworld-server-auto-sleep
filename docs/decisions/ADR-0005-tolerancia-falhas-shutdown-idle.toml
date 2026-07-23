@@ -1,0 +1,146 @@
+[metadata]
+id = "ADR-0005"
+title = "Tolerancia a falhas do shutdown por idle e retry no save via REST API"
+status = "Aceito"
+date = "2026-07-21"
+
+[context]
+text = """
+Apos implantacao do ADR-0004, foram observados tres cenarios problematicos
+em producao, ainda nao cobertos pelas decisoes anteriores:
+
+1. **Cenário 1 — Timeout no `/save` aborta o desligamento:** em 2026-07-20,
+   o container `palworld-auto-manager` detectou o servidor vazio por 10
+   minutos e iniciou o fluxo de shutdown (backup, save, sleep, shutdown).
+   O `POST /v1/api/save` demorou ~14 segundos para responder (confirmado pelo
+   log do proprio Palworld). O manager abortou o desligamento porque o
+   `PalworldApi` aplicava um timeout fixo de 10 segundos para todos os
+   endpoints. O servidor ficou ligado e o manager entrou em estado de
+   paralisia operacional.
+
+2. **Cenario 2 — Estado do manager preso em `STOPPING` apos falha no idle
+   shutdown:** o mesmo incidente de 19/07 mostrou que, quando
+   `processManager.stopServer()` rechaca (por qualquer motivo), o catch em
+   `IdleMonitor.tick()` so resseta `idleTriggered`. Ele NAO:
+   - volta `StateManager` de `STOPPING` para `RUNNING`;
+   - reinicia o `IdleMonitor` (que ja tinha sido `.stop()`);
+   - reativa o `wakeListener` (que ja tinha sido `.close()`).
+   Resultado: o container do manager segue online, mas nao executa nenhuma
+   acao nova. O container do Palworld segue online porque o shutdown foi
+   abortado. Nenhum log novo e emitido ate que algo externo mexa no estado.
+
+3. **Cenario 3 — Log de "shutdown forcado" confuso:** em 2026-07-19, o
+   desligamento por idle foi um sucesso completo, mas o manager atingiu o
+   `SERVER_SHUTDOWN_TIMEOUT_SECONDS=180` antes do `isRunning()` retornar
+   false. Ele chamou `docker stop` (sem `-t` explicito) e o container
+   encerrou 23 segundos depois, respeitando o `stop_grace_period: 180s`. O
+   log "Timeout aguardando encerramento limpo. Tentando parada forcada"
+   gerou falsa impressao de erro.
+
+Adicionalmente, foi identificado que a imagem `thijsvanloof/palworld-server-docker`
+executa um job cron (`bash /usr/local/bin/update` schedule `0 * * * *`) de
+hora em hora, que consulta o endpoint `/v1/api/players`. Esta carga
+sincronica adicional em horarios como 06:00, 07:00, 08:00 pode coincidir com
+o desligamento por idle e amplificar o cenario 1.
+"""
+
+[decision]
+text = """
+Adotar tolerancia minima e cirurigica para os tres cenarios, sem otimizacao
+prematura:
+
+1. **Timeout dedicado para `/save` e `/shutdown`.** Introduzir a env var
+   `REST_API_SAVE_TIMEOUT_SECONDS` (default 60s, min 10s, max 300s). O
+   `PalworldApi` aceita agora `saveTimeoutMs` separado do `timeoutMs`. Os
+   endpoints sensiveis (`saveWorld`, `shutdown`) usam o timeout maior; os
+   endpoints de polling rapido (`getInfo`, `getPlayers`) mantem o timeout
+   curto de 10s para nao atrasar a deteccao de queda.
+
+2. **Retry em `/save` apenas para timeout.** Implementar 1 retry (configuravel
+   via `retryOnTimeout`, default 1) com backoff de 2s. Retry apenas em
+   `PalworldApiError('timeout')`, nunca em erro HTTP 4xx/5xx (sinal de
+   problema estrutural). O endpoint `/save` do Palworld e idempotente do
+   ponto de vista do jogo, entao a duplicacao e segura.
+
+3. **Recuperacao automatica apos falha no idle shutdown.** Adicionar try/catch
+   em volta de `processManager.stopServer()` dentro do callback
+   `onIdleTimeout` em `src/entrypoints/main.ts`. Em caso de falha:
+   - `stateManager.forceTransition('RUNNING')`
+   - `idleMonitor.start()`
+   - `wakeListener.start()`
+   - log informativo (error) explicando a recuperacao.
+   O proximo ciclo de ociosidade podera tentar novamente.
+
+4. **Melhorar observabilidade do shutdown final.** Ajustar a mensagem de
+   timeout em `ProcessManager.stopServerInternal()` para deixar claro que
+   o fallback via `driver.stop()` e comportamento esperado para servidores
+   com finalizacao lenta, e nao uma falha.
+
+5. **Docker `stop` explicito com grace period.** `DockerProcessDriver.stop()`
+   passa agora `docker stop --time <segundos> <container>`, usando
+   `serverShutdownTimeoutSeconds` configurado. Isso desacopla o driver do
+   `stop_grace_period` do compose e torna o comportamento consistente mesmo
+   se o compose for alterado.
+
+6. **Aumentar `SERVER_SHUTDOWN_TIMEOUT_SECONDS` para 240s e alinhar com
+   `stop_grace_period: 240s` no docker-compose.yml.** O cenario 3 mostrou
+   180s como valor justo, mas sem margem para saves em crescimento. 240s
+   adiciona 33% de folga sem causar atrasos perceptiveis (shutdown so
+   ocorre por ociosidade).
+"""
+
+[alternatives]
+items = [
+  { name = "Aumentar o timeout padrao de todos os endpoints para 60s", reason = "Mais simples, mas penaliza o getPlayers (que falharia em detectar API down). Polling de idle pode ficar lento." },
+  { name = "Retry agressivo em todos os endpoints da API", reason = "Otimizacao prematura. /players e chamado uma vez por minuto e uma falha esporadica (cron de update da imagem) e absorvida no proximo ciclo. Retry aqui nao traz beneficio." },
+  { name = "Estado ERROR permanente apos falha de idle shutdown, exigindo intervencao manual", reason = "Mais conservador, mas o servidor Palworld fica ligado indefinidamente e o usuario so descobre o problema quando tenta jogar. Recuperacao automatica e mais resiliente." },
+  { name = "Usar signals POSIX (SIGTERM) diretamente via docker exec", reason = "A REST API ja oferece endpoint /shutdown, validado pelo cenario 3. Adicionar processo direto seria redundancia e menos portavel (Windows)." }
+]
+
+[tradeoffs]
+gains = [
+  "Timeout de 60s no /save absorve a variabilidade observada na imagem Palworld (ate ~14s no cenario real).",
+  "1 retry em timeout protege contra falhas transitorias raras sem retries desnecessarios em erros comportamentais.",
+  "Recuperacao automatica evita o estado paralisado do cenario 2 e permite nova tentativa no proximo ciclo de idle.",
+  "Mensagem de shutdown melhorada reduz confusao operacional durante desligamentos lentos.",
+  "docker stop -t explicito desacopla o driver da configuracao do compose.",
+  "240s de grace period adiciona margem para saves grandes sem custo operacional perceptivel."
+]
+losses = [
+  "Shutdown de servidor por idle pode levar ate 240s no pior caso (era 180s). Aceitavel porque ocorre apenas quando o servidor esta vazio.",
+  "Backoff fixo de 2s no retry pode atrasar um pouco o shutdown em caso de timeout do save. Em troca, evita abortar o desligamento incorretamente.",
+  "Recuperacao automatica exige.transaction('RUNNING') que ignora a state machine. Aceitavel porque e uma saida de emergencia documentada."
+]
+risks = [
+  "Se a REST API do Palworld mudar comportamento (ex: tornar /save mais lento de forma sustentada), o timeout de 60s pode ficar novamente insuficiente. Monitorar logs e aumentar o default se preciso.",
+  "A retirada do catch em IdleMonitor para um catch em main.ts altera a semantica do teste original. Manter o teste do IdleMonitor garantindo que idleTriggered volta a false na falha do callback.",
+  "O aumento para 240s exige coordenacao com todos os deployments: .env, .env.docker.example, docker-compose.yml, README, ADR. Erro de digitacao quebra a invariante.",
+  "docker stop com -t explicito nao cancela stop_grace_period do compose; os dois operam em paralelo. Compor para garantir que o tempo efetivo seja o MAIOR entre os dois."
+]
+
+[consequences]
+text = """
+- O `PalworldApi` agora exige teste proprio. Criado `tests/palworld-api.test.ts`
+  cobrindo timeouts por operacao e retry. Cobertura minima: 6 testes.
+- O `IdleMonitor` ja tinha teste de resetAfterStateChange. Adicionado teste
+  para recuperacao apos falha do callback onIdleTimeout.
+- O `DockerProcessDriver` ganhou opcao `stopTimeoutSeconds` e teste dedicado
+  ao formato do comando `docker stop --time N <container>`.
+- main.ts passa a ter logica de recuperacao. Para testes, isso torna o fluxo
+  de idle mais complexo. Estrategia: manter o teste do IdleMonitor com
+  callback mockado, e adicionar teste separado (TODO em iteracoes futuras)
+  se for necessario mockar `wakeListener.start()`.
+- Documentacao: `README.md`, `docs/architecture/overview.md` e esta ADR sao
+  atualizados. A relacao entre `SERVER_SHUTDOWN_TIMEOUT_SECONDS`,
+  `stop_grace_period` e `REST_API_SAVE_TIMEOUT_SECONDS` passa a ser
+  documentada como invariante operacional.
+- A variavel `REST_API_SAVE_TIMEOUT_SECONDS` e nova. Usuarios em producao
+  precisam adiciona-la manualmente se o sync do .env nao for automatico.
+- O comportamento do cron `0 * * * *` da imagem `thijsvanloof/palworld-server-docker`
+  nao e controlavel por este projeto. Documentado para consciencia
+  operacional, nao ha automacao.
+"""
+
+[relations]
+supersedes = []
+related = ["ADR-0004"]

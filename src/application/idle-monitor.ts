@@ -58,6 +58,11 @@ export class IdleMonitor {
     }
   }
 
+  public restart(): void {
+    this.stop();
+    this.start();
+  }
+
   public resetAfterStateChange(nextState: ServerState): void {
     if (nextState !== 'RUNNING') {
       this.stop();

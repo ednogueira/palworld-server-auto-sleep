@@ -15,7 +15,11 @@ export function createProcessDriver({ config, logger }: CreateProcessDriverOptio
     if (!config.dockerContainerName) {
       throw new Error('Modo docker requer DOCKER_CONTAINER_NAME.');
     }
-    return new DockerProcessDriver({ containerName: config.dockerContainerName, logger });
+    return new DockerProcessDriver({
+      containerName: config.dockerContainerName,
+      logger,
+      stopTimeoutSeconds: config.serverShutdownTimeoutSeconds,
+    });
   }
 
   if (!config.palserverExePath || !config.palserverWorkingDirectory || !config.palserverProcessName) {

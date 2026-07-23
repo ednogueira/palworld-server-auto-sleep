@@ -94,4 +94,63 @@ describe('IdleMonitor', () => {
 
     expect(onIdleTimeout).toHaveBeenCalledTimes(1);
   });
+
+  it('permite novo idle quando onIdleTimeout falha', async () => {
+    let firstCall = true;
+    const getPlayers = vi.fn<() => Promise<unknown>>().mockResolvedValue([]);
+
+    const api = { getPlayers } as unknown as PalworldApi;
+    const stateManager = new StateManager('RUNNING');
+    const onIdleTimeout = vi.fn().mockImplementation(async () => {
+      if (firstCall) {
+        firstCall = false;
+        throw new Error('Falha simulada no desligamento.');
+      }
+    });
+    const logger = createLogger();
+    const monitor = new IdleMonitor(api, stateManager, {
+      playerCheckIntervalSeconds: 1,
+      emptyServerTimeoutMinutes: 0,
+      logger,
+      onIdleTimeout,
+    });
+
+    monitor.start();
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(onIdleTimeout).toHaveBeenCalledTimes(2);
+    expect(logger.error).toHaveBeenCalled();
+  });
+
+  it('reseta o estado interno ao chamar restart()', async () => {
+    const getPlayers = vi.fn<() => Promise<unknown>>().mockResolvedValue([]);
+    const api = { getPlayers } as unknown as PalworldApi;
+    const stateManager = new StateManager('RUNNING');
+    const onIdleTimeout = vi.fn().mockResolvedValue(undefined);
+    const monitor = new IdleMonitor(api, stateManager, {
+      playerCheckIntervalSeconds: 1,
+      emptyServerTimeoutMinutes: 1,
+      logger: createLogger(),
+      onIdleTimeout,
+    });
+
+    monitor.start();
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(onIdleTimeout).toHaveBeenCalledTimes(1);
+
+    monitor.restart();
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(onIdleTimeout).toHaveBeenCalledTimes(1);
+  });
 });

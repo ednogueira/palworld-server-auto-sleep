@@ -1,0 +1,87 @@
+[metadata]
+id = "ADR-0006"
+title = "Versionamento SemVer, tags Git e tags de imagem Docker"
+status = "Aceito"
+date = "2026-07-23"
+
+[context]
+text = """
+O projeto cresceu em complexidade e ja tem multiplas alteracoes com impacto
+funcional (novo modo Docker, shutdown seguro, tolerancia a falhas, correcao
+de loop de restart). Nao havia ate agora nenhuma politica explicita de
+versionamento, CHANGELOG ou convencao para tags Git e tags de imagem Docker.
+
+Sem uma politica, cada deploy precisa ser interpretado manualmente e ha risco
+de ambiguidade entre a versao do codigo, a tag de imagem em producao e a
+documentacao.
+"""
+
+[decision]
+text = """
+Adotar as seguintes convencoes de versionamento:
+
+1. **SemVer** (`MAJOR.MINOR.PATCH`) no `package.json` e em git tags.
+   - `MAJOR`: mudancas incompativeis (ex: mudanca de modo default).
+   - `MINOR`: nova feature mantendo compatibilidade (ex: novo modo Docker).
+   - `PATCH`: correcoes e ajustes sem mudanca de comportamento observavel.
+
+2. **Git tags anotadas** no formato `v1.2.3`, criadas **apos** o merge na
+   branch principal e **antes** do deploy em producao. Cada tag aponta para
+   exatamente o codigo que vai para producao.
+
+3. **Tags de imagem Docker** do manager:
+   - `cloud-palworld-auto-manager:1.2.3` (versao exata).
+   - `cloud-palworld-auto-manager:latest` (ultima estavel).
+   - `cloud-palworld-auto-manager:rollback-<timestamp>` (geradas por
+     `cloud/scripts/tag-manager-image.sh`, uso local).
+   O script `tag-manager-image.sh` tambem aplica a tag de versao alem da
+   tag de rollback.
+
+4. **CHANGELOG.md** mantido manualmente seguindo o padrao Keep a Changelog,
+   com secoes `Added`, `Changed`, `Fixed`, `Security` por release.
+
+5. **Imagem do servidor Palworld** (`thijsvanloef/palworld-server-docker`) e
+   controlada externamente. Apenas registramos no CHANGELOG a tag
+   compativel testada, sem versionar junto.
+
+6. **Conventional Commits** ficam como pratica recomendada, mas nao obrigatoria.
+   Quando o volume de PRs aumentar, o CHANGELOG pode passar a ser gerado
+   automaticamente a partir das mensagens.
+"""
+
+[alternatives]
+items = [
+  { name = "CalVer (YYYY.MM.DD)", reason = "Seria simples, mas nao comunica breaking changes nem granularidade de correcoes." },
+  { name = "Sem versionamento (apenas latest)", reason = "Simples mas dificulta rollback, auditoria e comunicacao com usuarios." },
+  { name = "Versionar imagem do servidor junto com a do manager", reason = "A imagem do servidor e externa (thijsvanloef) e versionada por eles; tentar sincronizar adicionaria atrito sem beneficio." }
+]
+
+[tradeoffs]
+gains = [
+  "Comunica claramente escopo de cada release para usuarios e operadores.",
+  "Permite rollback deterministico por versao (tag de imagem + tag Git).",
+  "CHANGELOG explicito reduz dependencia de git log para entender o que mudou."
+]
+losses = [
+  "Disciplina manual para manter CHANGELOG e versao de package.json em sincronia.",
+  "Mais uma tag Docker para gerenciar (versao + latest + rollback)."
+]
+risks = [
+  "Esquecer de bumpar a versao antes do deploy.",
+  "Divergencia entre versao do package.json e tag Git se o fluxo nao for seguido."
+]
+
+[consequences]
+text = """
+- O `package.json` deve ser a fonte da verdade da versao; tag Git e tag Docker
+  sao derivadas dele.
+- O `cloud/scripts/tag-manager-image.sh` (uso local) deve ser atualizado para
+  aplicar tambem a tag de versao alem da tag de rollback.
+- Cada release precisa atualizar o CHANGELOG antes de criar a tag.
+- Scripts de CI/CD (quando existirem) devem validar que a tag Git e a versao
+  do `package.json` estao em sincronia.
+"""
+
+[relations]
+supersedes = []
+related = ["ADR-0004", "ADR-0005"]

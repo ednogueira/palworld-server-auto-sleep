@@ -68,4 +68,37 @@ describe('loadConfig', () => {
     const env = { ...baseEnv(), PALSERVER_EXE_PATH: undefined } as unknown as Record<string, string>;
     expect(() => loadConfig(env)).toThrow('PALSERVER_EXE_PATH');
   });
+
+  it('aplica defaults para as novas variaveis de shutdown seguro', () => {
+    const config = loadConfig(baseEnv());
+    expect(config.savePostDelaySeconds).toBe(20);
+    expect(config.shutdownApiWaittimeSeconds).toBe(30);
+    expect(config.preShutdownBackupEnabled).toBe(false);
+    expect(config.preShutdownBackupMaxWaitSeconds).toBe(120);
+  });
+
+  it('aceita valores customizados para as variaveis de shutdown seguro', () => {
+    const env = {
+      ...baseEnv(),
+      SAVE_POST_DELAY_SECONDS: '45',
+      SHUTDOWN_API_WAITTIME_SECONDS: '60',
+      PRE_SHUTDOWN_BACKUP_ENABLED: 'true',
+      PRE_SHUTDOWN_BACKUP_MAX_WAIT_SECONDS: '300',
+    };
+    const config = loadConfig(env);
+    expect(config.savePostDelaySeconds).toBe(45);
+    expect(config.shutdownApiWaittimeSeconds).toBe(60);
+    expect(config.preShutdownBackupEnabled).toBe(true);
+    expect(config.preShutdownBackupMaxWaitSeconds).toBe(300);
+  });
+
+  it('rejeita SAVE_POST_DELAY_SECONDS fora do intervalo', () => {
+    const env = { ...baseEnv(), SAVE_POST_DELAY_SECONDS: '500' };
+    expect(() => loadConfig(env)).toThrow('SAVE_POST_DELAY_SECONDS');
+  });
+
+  it('rejeita valor booleano invalido em PRE_SHUTDOWN_BACKUP_ENABLED', () => {
+    const env = { ...baseEnv(), PRE_SHUTDOWN_BACKUP_ENABLED: 'talvez' };
+    expect(() => loadConfig(env)).toThrow('PRE_SHUTDOWN_BACKUP_ENABLED');
+  });
 });

@@ -85,6 +85,26 @@ describe('DockerProcessDriver', () => {
     expect(mocks.execFileMock).toHaveBeenCalledTimes(2);
     const stopCall = mocks.execFileMock.mock.calls[1] as unknown[];
     expect(stopCall[0]).toBe('docker');
-    expect(stopCall[1]).toEqual(['stop', 'palworld-server']);
+    expect(stopCall[1]).toEqual(['stop', '--time', '240', 'palworld-server']);
+  });
+
+  it('respeita stopTimeoutSeconds customizado no docker stop', async () => {
+    mocks.execFileMock
+      .mockImplementationOnce((cmd: string, args: string[], cb: (error: Error | null, result?: { stdout: string }) => void) => {
+        cb(null, { stdout: 'true 1234' });
+      })
+      .mockImplementationOnce((cmd: string, args: string[], cb: (error: Error | null, result?: { stdout: string }) => void) => {
+        cb(null, { stdout: 'palworld-server' });
+      });
+
+    const driver = new DockerProcessDriver({
+      containerName: 'palworld-server',
+      logger: createLogger(),
+      stopTimeoutSeconds: 120,
+    });
+    await driver.stop();
+
+    const stopCall = mocks.execFileMock.mock.calls[1] as unknown[];
+    expect(stopCall[1]).toEqual(['stop', '--time', '120', 'palworld-server']);
   });
 });

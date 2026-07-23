@@ -1,0 +1,150 @@
+[metadata]
+id = "ADR-0004"
+title = "Shutdown seguro, backup pre-shutdown e timezone local"
+status = "Aceito"
+date = "2026-07-19"
+
+[context]
+text = """
+Apos 24h+ ocioso, o auto-sleep manager desligou o servidor Docker de Palworld
+como esperado. Quando o primeiro jogador retornou, todas as bases e estruturas
+haviam desaparecido do mundo, restando apenas os Pals e as caixas de pal.
+
+Apos analise do fluxo em `src/application/process-manager.ts` e da documentacao
+da imagem `thijsvanloef/palworld-server-docker`, foram identificados varios
+fatores que contribuem para o problema:
+
+1. **Save incompleto:** o `POST /v1/api/save` da REST API do Palworld pode
+   retornar 200 antes de todos os dados (especialmente estruturas de base) serem
+   persistidos em disco. Esse e um bug conhecido do proprio Palworld.
+
+2. **Janela entre save e shutdown muito curta:** o manager usa `sleep(5000)`
+   fixo e `api.shutdown(10, ...)` com waittime de 10 segundos, valores
+   arbitrarios que nao dao margem para saves pesados.
+
+3. **Inconsistencia de timeout:** o `stop_grace_period` do container Palworld
+   era de 30s enquanto o `SERVER_SHUTDOWN_TIMEOUT_SECONDS` do manager era 90s.
+   O Docker pode enviar SIGKILL apos 30s, matando o processo enquanto a logica
+   do manager ainda aguarda.
+
+4. **Sem backup pre-shutdown:** o backup automatico da imagem roda 1x por dia
+   (4 AM). Se o save for corrompido em qualquer outro desligamento, a perda vai
+   ate o backup do dia anterior.
+
+5. **SIGTERM no manager nao desligava o servidor:** o handler de SIGINT/SIGTERM
+   em `main.ts` apenas parava o `idleMonitor` e o `wakeListener`, deixando o
+   servidor Palworld rodando. Se o manager morresse (ex: `docker stop` do
+   `palworld-auto-manager`), o servidor continuaria ate ser morto pelo Docker
+   daemon sem graceful shutdown.
+
+6. **Logs em UTC:** o Node.js gera timestamps em UTC por padrao, dificultando a
+   correlacao com eventos do mundo real no horario do usuario (Sao Paulo).
+"""
+
+[decision]
+text = """
+Implementar um conjunto de melhorias que tornam o desligamento previsivel e
+resiliente a corrupcao:
+
+1. **Tornar o shutdown totalmente configuravel.** Adicionar em `loadConfig()`
+   variaveis com defaults saudaveis:
+   - `SAVE_POST_DELAY_SECONDS=20` (tempo apos POST /save antes de pedir shutdown)
+   - `SHUTDOWN_API_WAITTIME_SECONDS=30` (parametro `waittime` do POST /shutdown)
+   - `PRE_SHUTDOWN_BACKUP_ENABLED=true` no Docker
+   - `PRE_SHUTDOWN_BACKUP_MAX_WAIT_SECONDS=120`
+   - `SERVER_SHUTDOWN_TIMEOUT_SECONDS=180`
+
+2. **Verificacao explicita do save.** Se `api.saveWorld()` falhar ou lancar
+   excecao, o `stopServer()` aborta o desligamento e lanca erro. Antes, o
+   catch silenciava o erro e prosseguia.
+
+3. **Backup pre-shutdown opcional (Docker).** Introduzir port `BackupService`
+   e adapter `DockerBackupService` que executa `docker exec <container> backup`
+   antes do save. Antes, o shutdown depende unicamente do save cooperativo
+   do Palworld, que demonstrou nao ser confiavel. O adapter aguarda backups em
+   andamento (`pgrep -x backup`) ate o timeout configurado.
+
+4. **Alinhar timeouts entre Docker e manager.** O `stop_grace_period` do
+   `palworld-server` passa para 180s. O `SERVER_SHUTDOWN_TIMEOUT_SECONDS` do
+   manager passa para 180s. Os dois valores devem ser iguais para que o
+   manager nao seja pego de surpresa pelo SIGKILL do Docker.
+
+5. **Backup automatico mais frequente.** `BACKUP_CRON_EXPRESSION` muda de
+   `0 4 * * *` (1x/dia) para `0 */4 * * *` (a cada 4h). Retencao reduzida de
+   7 para 3 dias para limitar o crescimento. Cada backup ocupa cerca de 6MB,
+   entao o consumo total fica abaixo de 200MB mesmo com retencao maior.
+
+6. **Graceful shutdown do manager.** O handler de SIGINT/SIGTERM em `main.ts`
+   agora verifica se o servidor esta RUNNING/STARTING e chama
+   `processManager.stopServer()` antes de sair. Antes, o manager morria
+   deixando o servidor Palworld orfao.
+
+7. **Timezone em Sao Paulo.** Adicionar `TZ=America/Sao_Paulo` em todos os
+   pontos de configuracao relevantes:
+   - `/opt/palworld/.env` (servidor Palworld)
+   - `cloud/.env.docker.example` e `cloud/docker-compose.full.yml` (manager)
+   - `cloud/Dockerfile.manager` com `apk add tzdata` e `ENV TZ=...`
+   - Logger do Pino com `timestamp: localIsoTime` que respeita o `TZ` e
+     emite ISO 8601 com offset (ex: `-03:00`).
+
+8. **Melhorar deteccao de erro de comunicacao no Docker.** O
+   `DockerProcessDriver.getSnapshot()` agora distingue container inexistente
+   (`No such object`) de erro de daemon Docker. Erros de comunicacao sao
+   logados como `warn` (antes eram `debug`), mantendo o comportamento
+   defensivo de retornar `running: false`.
+"""
+
+[alternatives]
+items = [
+  { name = "Usar RCON em vez de REST API para shutdown", reason = "Pocketpair deprecou RCON (https://tech.palworldgame.com/api/rcon/). Tanto a REST API quanto o RCON tem o mesmo problema fundamental: a chamada de save pode retornar sucesso antes do flush em disco." },
+  { name = "Aumentar o timeout do Docker sem mudar o codigo do manager", reason = "Mitigaria o SIGKILL, mas nao resolveria o save incompleto nem a falta de backup pre-shutdown. As correcoes precisam ser combinadas." },
+  { name = "Manter o sleep fixo de 5s e shutdown com waittime=10s", reason = "Mantem compatibilidade, mas o caso real mostrou que esses valores sao insuficientes para servidores com dados significativos." },
+  { name = "Backup off-site (S3, rclone, etc.)", reason = "Usuario possui 200GB de disco local e nao tem provedor de cloud definido. Backups locais sao suficientes para o cenario; off-site fica para um ADR futuro se a ameaca de perda do host for levantada." }
+]
+
+[tradeoffs]
+gains = [
+  "Janela minima de 20s entre save e shutdown, dando tempo real para o flush em disco.",
+  "Backup pre-shutdown cria um snapshot consistente imediatamente antes de qualquer desligamento automatico.",
+  "Timeout alinhado entre manager e Docker elimina a corrida que causava SIGKILL prematuro.",
+  "Backups a cada 4h reduzem a perda maxima de 24h para 4h.",
+  "Logs em horario local facilitam troubleshooting.",
+  "Graceful shutdown do manager elimina o orfao do Palworld."
+]
+losses = [
+  "Shutdown de servidor agora leva ate 180s no pior caso (era 90s). Aceitavel pois o servidor so desliga por ociosidade.",
+  "Backup pre-shutdown adiciona de segundos a minutos ao shutdown de acordo com o tamanho do save. Em containers com save de 6MB, duracao tipica e inferior a 10s.",
+  "Logs em horario local exigem que `TZ` esteja configurado em todos os pontos (ja feito).",
+  "Backup a cada 4h com retencao de 3 dias usa ~150MB de disco (vs ~50MB com 1x/dia). Trivial dentro do limite de 200GB."
+]
+risks = [
+  "Se a REST API do Palworld mudar comportamento em versoes futuras, a verificacao de save pode precisar de ajustes.",
+  "O backup pre-shutdown depende do `docker exec` retornar em tempo habil. O timeout de 120s evita travamento indefinido, mas pode levar a shutdown sem backup se o Docker estiver lento.",
+  "A execucao de `pgrep -x backup` no container adiciona um roundtrip Docker a cada 5s durante a espera. Impacto desprezivel."
+]
+
+[consequences]
+text = """
+- O `process-manager.ts` agora tem o `BackupService` como dependencia obrigatoria
+  (injetado via constructor). Toda chamada de `new ProcessManager(...)` em
+  testes deve fornecer um fake. O construtor da factory em
+  `application/factories/create-backup-service.ts` decide o adapter com base
+  no modo de operacao.
+- Para o modo `native-windows` (servidor rodando direto no Windows), o
+  `PRE_SHUTDOWN_BACKUP_ENABLED` nao tem implementacao por enquanto — um
+  `NoopBackupService` e retornado e loga warn. O save + shutdown gracioso
+  ainda funciona, mas sem o backup extra.
+- A relacao entre `SERVER_SHUTDOWN_TIMEOUT_SECONDS` e `stop_grace_period` do
+  Docker deve ser documentada para evitar quebra silenciosa. Sera incluido em
+  `docs/architecture/overview.md` e no `README.md`.
+- A implementacao de backup pre-shutdown nao cobre restauracao automatica. O
+  fluxo de restore continua sendo manual via `cloud/03-restore-save.sh` (que
+  era para a migracao inicial Windows -> Linux, mas pode ser adaptado).
+- Como o handler de SIGINT/SIGTERM agora executa trabalho async antes de sair,
+  o shutdown pode levar ate ~180s a mais se o servidor estiver rodando. Em
+  ambientes com `timeout` rigido (systemd, k8s) isso precisa ser considerado.
+"""
+
+[relations]
+supersedes = []
+related = ["ADR-0001", "ADR-0003"]

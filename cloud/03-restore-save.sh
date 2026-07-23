@@ -13,7 +13,7 @@
 #
 # PRÉ-REQUISITO:
 #   - O save do Windows deve ter sido transferido para:
-#       /opt/palworld/save-backup/F8C5770D4ED1F3EF6D90BBB274D20CA0/
+#       /opt/palworld/save-backup/<HASH_ANTIGO_DO_SAVE>/
 #     (Use o backup-save-windows.ps1 no Windows para gerar e enviar o save)
 #
 # Uso:
@@ -43,8 +43,8 @@ DATA_DIR="$PALWORLD_DIR/palworld-data"
 SAVE_DIR="$DATA_DIR/Pal/Saved/SaveGames/0"
 BACKUP_DIR="$PALWORLD_DIR/save-backup"
 
-# Hash antigo (do servidor Windows - confirmado pelo usuário)
-OLD_HASH="F8C5770D4ED1F3EF6D90BBB274D20CA0"
+# Hash antigo (do servidor Windows - informar via env ou editar aqui)
+OLD_HASH="${OLD_HASH:-<HASH_ANTIGO_DO_SAVE>}"
 OLD_SAVE_PATH="$BACKUP_DIR/$OLD_HASH"
 
 # ---- Validações iniciais ----------------------------------------------------

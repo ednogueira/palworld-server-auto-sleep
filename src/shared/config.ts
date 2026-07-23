@@ -23,6 +23,11 @@ export interface AppConfig {
   serverStartupTimeoutSeconds: number;
   serverShutdownTimeoutSeconds: number;
   wakeCooldownSeconds: number;
+  savePostDelaySeconds: number;
+  shutdownApiWaittimeSeconds: number;
+  restApiSaveTimeoutSeconds: number;
+  preShutdownBackupEnabled: boolean;
+  preShutdownBackupMaxWaitSeconds: number;
   logLevel: LogLevel;
 }
 
@@ -67,6 +72,39 @@ function parseNumber(value: string | undefined, key: string, options: { min: num
     throw new Error(`Valor fora do intervalo em ${key}: ${raw}`);
   }
   return parsed;
+}
+
+function parseNumberWithDefault(
+  value: string | undefined,
+  key: string,
+  defaultValue: number,
+  options: { min: number; max?: number },
+): number {
+  if (value === undefined || value.trim() === '') {
+    return defaultValue;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
+    throw new Error(`Valor numerico invalido em ${key}: ${value}`);
+  }
+  if (parsed < options.min || (options.max !== undefined && parsed > options.max)) {
+    throw new Error(`Valor fora do intervalo em ${key}: ${value}`);
+  }
+  return parsed;
+}
+
+function parseBooleanWithDefault(value: string | undefined, key: string, defaultValue: boolean): boolean {
+  if (value === undefined || value.trim() === '') {
+    return defaultValue;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true' || normalized === '1' || normalized === 'yes') {
+    return true;
+  }
+  if (normalized === 'false' || normalized === '0' || normalized === 'no') {
+    return false;
+  }
+  throw new Error(`Valor booleano invalido em ${key}: ${value}. Use true/false, 1/0 ou yes/no.`);
 }
 
 function parseLogLevel(value: string | undefined): LogLevel {
@@ -148,6 +186,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     serverStartupTimeoutSeconds: parseNumber(env.SERVER_STARTUP_TIMEOUT_SECONDS, 'SERVER_STARTUP_TIMEOUT_SECONDS', { min: 30 }),
     serverShutdownTimeoutSeconds: parseNumber(env.SERVER_SHUTDOWN_TIMEOUT_SECONDS, 'SERVER_SHUTDOWN_TIMEOUT_SECONDS', { min: 10 }),
     wakeCooldownSeconds: parseNumber(env.WAKE_COOLDOWN_SECONDS, 'WAKE_COOLDOWN_SECONDS', { min: 0 }),
+    savePostDelaySeconds: parseNumberWithDefault(env.SAVE_POST_DELAY_SECONDS, 'SAVE_POST_DELAY_SECONDS', 20, { min: 0, max: 120 }),
+    shutdownApiWaittimeSeconds: parseNumberWithDefault(env.SHUTDOWN_API_WAITTIME_SECONDS, 'SHUTDOWN_API_WAITTIME_SECONDS', 30, { min: 1, max: 120 }),
+    restApiSaveTimeoutSeconds: parseNumberWithDefault(env.REST_API_SAVE_TIMEOUT_SECONDS, 'REST_API_SAVE_TIMEOUT_SECONDS', 60, { min: 10, max: 300 }),
+    preShutdownBackupEnabled: parseBooleanWithDefault(env.PRE_SHUTDOWN_BACKUP_ENABLED, 'PRE_SHUTDOWN_BACKUP_ENABLED', false),
+    preShutdownBackupMaxWaitSeconds: parseNumberWithDefault(env.PRE_SHUTDOWN_BACKUP_MAX_WAIT_SECONDS, 'PRE_SHUTDOWN_BACKUP_MAX_WAIT_SECONDS', 120, { min: 10, max: 600 }),
     logLevel: parseLogLevel(env.LOG_LEVEL),
   };
 }

@@ -5,9 +5,12 @@ import type { ProcessSnapshot, ServerProcessDriver } from '../../application/por
 
 const execFileAsync = promisify(execFile);
 
+const DEFAULT_STOP_TIMEOUT_SECONDS = 240;
+
 export interface DockerProcessDriverOptions {
   containerName: string;
   logger: pino.Logger;
+  stopTimeoutSeconds?: number;
 }
 
 export class DockerProcessDriver implements ServerProcessDriver {
@@ -26,7 +29,12 @@ export class DockerProcessDriver implements ServerProcessDriver {
         '{{.State.Running}} {{.State.Pid}}',
         this.options.containerName,
       ]);
-      const [runningStr, pidStr] = stdout.trim().split(' ');
+      const trimmed = stdout.trim();
+      const [runningStr, pidStr] = trimmed.split(' ');
+      if (runningStr === undefined || pidStr === undefined) {
+        this.options.logger.debug({ stdout: trimmed }, 'Saida inesperada do docker inspect.');
+        return { running: false, pids: [] };
+      }
       const running = runningStr === 'true';
       const pid = Number(pidStr);
       return {
@@ -34,7 +42,13 @@ export class DockerProcessDriver implements ServerProcessDriver {
         pids: running && Number.isFinite(pid) && pid > 0 ? [pid] : [],
       };
     } catch (error) {
-      this.options.logger.debug({ error }, 'Falha ao inspecionar container Docker.');
+      const message = error instanceof Error ? error.message : String(error);
+      const isNotFound = message.includes('No such object') || message.includes('not found');
+      if (isNotFound) {
+        this.options.logger.debug({ container: this.options.containerName }, 'Container nao existe.');
+        return { running: false, pids: [] };
+      }
+      this.options.logger.warn({ error }, 'Falha de comunicacao com Docker daemon. Assumindo container indisponivel.');
       return { running: false, pids: [] };
     }
   }
@@ -55,7 +69,11 @@ export class DockerProcessDriver implements ServerProcessDriver {
       return;
     }
 
-    await execFileAsync('docker', ['stop', this.options.containerName]);
-    this.options.logger.info(`Container Docker ${this.options.containerName} parado.`);
+    const timeoutSeconds = this.options.stopTimeoutSeconds ?? DEFAULT_STOP_TIMEOUT_SECONDS;
+    await execFileAsync('docker', ['stop', '--time', String(timeoutSeconds), this.options.containerName]);
+    this.options.logger.info(
+      { timeoutSeconds },
+      `Container Docker ${this.options.containerName} parado (docker stop -t ${timeoutSeconds}).`,
+    );
   }
 }

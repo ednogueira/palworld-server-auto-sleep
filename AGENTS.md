@@ -16,6 +16,12 @@ Descreva domínio, integrações, comandos úteis, regras de validação e conve
 - evitar mudanças fora do escopo.
 - após implementação de alterações estruturantes e relevantes a arquitetura do projeto atualize `docs/architecture/overview.md`
 
+## Deploy / atualização do ambiente
+- Antes de atualizar o ambiente de produção na Oracle Cloud, consulte e siga o runbook local `docs/runbooks/update-environment.md` (não versionado; manter fora do repositório público).
+- Sempre peça aprovação explícita do usuário antes de executar sync, build, recriar containers ou restaurar backups.
+- Use os scripts em `cloud/scripts/` para operações mecânicas (backup do save, tag de imagem, rollback do manager) — não reimplemente a lógica no shell. Esse diretório é local e não versionado.
+- A detecção do que mudou no server usa checksums (`md5sum`), não diff completo, para economizar tokens.
+
 ## Registro de decisões
 - Avalie se a tarefa introduz ou altera uma decisão arquitetural, operacional ou de engenharia relevante.
 - Quando houver impacto estrutural, criar ou atualizar um ADR em `docs/decisions/`.

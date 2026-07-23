@@ -1,5 +1,14 @@
 # Palworld Server Auto Sleep
 
+[![Version](https://img.shields.io/badge/version-1.0.0-blue)](https://github.com/ednogueira/palworld-server-auto-sleep/releases/tag/v1.0.0)
+[![Node.js](https://img.shields.io/badge/Node.js-22+-green)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://www.typescriptlang.org/)
+[![Docker](https://img.shields.io/badge/Docker-supported-2496ED)](https://www.docker.com/)
+[![Vitest](https://img.shields.io/badge/tests-Vitest-6E9F18)](https://vitest.dev/)
+[![Palworld](https://img.shields.io/badge/Palworld-Dedicated%20Server-red)](https://store.steampowered.com/app/1623730/Palworld/)
+[![OpenCode](https://img.shields.io/badge/OpenCode-Config-purple)](https://opencode.ai)
+[![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
+
 Protege sua campanha de Palworld desligando automaticamente o servidor dedicado quando não há jogadores online. Quando alguém tenta conectar, o servidor acorda automaticamente do último save — evitando morte dos Pals, deterioração da base e perda de progressão.
 
 ## Índice
@@ -54,7 +63,7 @@ src/
 ├── application/   → casos de uso + ports (process-manager, idle-monitor, ServerProcessDriver)
 ├── adapters/      → integrações externas (palworld-api, udp-wake-listener, drivers processo)
 ├── shared/        → config, logger, sleep
-└── entrypoints/   → main.ts (fluxo principal)
+└── entrypoints/   → index.ts (fluxo principal)
 ```
 
 A abstração `ServerProcessDriver` permite que o `ProcessManager` controle o servidor
@@ -143,7 +152,7 @@ sudo systemctl enable palworld-auto-manager
 sudo systemctl start palworld-auto-manager
 ```
 
-> **Detalhes completos de deploy em:** [`cloud/deploy-test-steps.md`](cloud/deploy-test-steps.md)
+> **Detalhes completos de deploy em:** [`cloud/README.md`](cloud/README.md)
 
 ---
 
@@ -179,7 +188,29 @@ Use o template em `cloud/.env.docker.example`:
 | `GAME_PORT` | `8211` | Porta UDP do jogo |
 | `PLAYER_CHECK_INTERVAL_SECONDS` | `60` | Frequência de verificação de jogadores |
 | `EMPTY_SERVER_TIMEOUT_MINUTES` | `10` | Tempo ocioso antes de desligar |
+| `SERVER_STARTUP_TIMEOUT_SECONDS` | `180` | Tempo máximo de boot do servidor |
+| `SERVER_SHUTDOWN_TIMEOUT_SECONDS` | `240` | Tempo máximo de shutdown. **Deve ser igual ao `stop_grace_period` do container** |
+| `SAVE_POST_DELAY_SECONDS` | `20` | Espera (em s) entre `POST /save` e `POST /shutdown`. Janela para o flush do save em disco. |
+| `SHUTDOWN_API_WAITTIME_SECONDS` | `30` | Parâmetro `waittime` enviado ao `POST /shutdown`. |
+| `REST_API_SAVE_TIMEOUT_SECONDS` | `60` | Timeout (em s) para `POST /save` e `POST /shutdown`. Maior que o padrão (10s) para tolerar saves pesados. |
+| `PRE_SHUTDOWN_BACKUP_ENABLED` | `false` | Quando `true` (Docker), executa `docker exec <container> backup` antes de salvar. |
+| `PRE_SHUTDOWN_BACKUP_MAX_WAIT_SECONDS` | `120` | Tempo máximo esperando backup em andamento terminar. |
+| `WAKE_COOLDOWN_SECONDS` | `30` | Cooldown entre wakes repetidos |
+| `TZ` | (não definido) | Timezone para logs e timestamps de backup. Sugerido: `America/Sao_Paulo`. |
 | `LOG_LEVEL` | `info` | Nível de log (`info`, `debug`, `trace`) |
+
+### Shutdown seguro (proteção contra corrupção de save)
+
+O fluxo de parada segue esta ordem:
+
+1. **(Opcional) Backup pre-shutdown** — `docker exec <container> backup` (apenas Docker).
+2. **`POST /save`** — se falhar, o shutdown é abortado para preservar o mundo.
+3. **Espera `SAVE_POST_DELAY_SECONDS`** — janela para o flush em disco.
+4. **`POST /shutdown`** com `waittime=SHUTDOWN_API_WAITTIME_SECONDS`.
+5. **Aguarda processo encerrar** (até `SERVER_SHUTDOWN_TIMEOUT_SECONDS`).
+6. **Último recurso:** `docker stop` ou `taskkill`.
+
+> ⚠️ O `stop_grace_period` do container `palworld-server` (em `docker-compose.yml`) deve ser **igual** ao `SERVER_SHUTDOWN_TIMEOUT_SECONDS`. O padrão é `240s` em ambos. Se o Docker matar o container antes (`stop_grace_period` menor), o manager não tem como salvar.
 
 ### Firewall e roteador
 
@@ -210,13 +241,15 @@ npm start
 ### Testes
 
 ```bash
-npm test
+npm test          # testes unitarios (Vitest)
+npm run test:scenarios   # E2E leve dos cenarios do ADR-0005 (sem Docker)
 ```
 
 ### Verificar tipos TypeScript
 
 ```bash
-npm run typecheck
+npm run typecheck          # src/
+npm run typecheck:scripts  # scripts/test-scenarios/
 ```
 
 ---
@@ -304,9 +337,9 @@ Dentro da pasta com seu ID Steam, você verá pastas com nomes de **32 caractere
 
 | Hash | Origem |
 |------|--------|
-| `BFB1017B4D35A38EDCFF5389EC16A578` | Hash original do servidor Windows local |
-| `F8C5770D4ED1F3EF6D90BBB274D20CA0` | 1ª migração para cloud (Windows → Linux) |
-| **`44BE3F01B7D3435C91AA2FEE69D74D9E`** | **Hash atual do servidor cloud** |
+| `AABBCCDD112233445566778899AABBCC` | Hash original do servidor Windows local |
+| `AABBCCDD112233445566778899AABBCC` | 1ª migração para cloud (Windows → Linux) |
+| **`AABBCCDD112233445566778899AABBCC`** | **Hash atual do servidor cloud** |
 
 O script detecta automaticamente qual hash antigo você possui (se já migrou antes ou
 ainda está no Windows original) e copia os dados para o hash cloud atual.

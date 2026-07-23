@@ -15,10 +15,12 @@ services:
   palworld-server:
     image: thijsvanloef/palworld-server-docker:latest
     container_name: palworld-server
-    restart: unless-stopped
-    stop_grace_period: 30s
+    restart: on-failure
+    stop_grace_period: 240s
     env_file:
       - .env
+    environment:
+      - TZ=America/Sao_Paulo
     ports:
       # Porta do jogo (público)
       - "8211:8211/udp"

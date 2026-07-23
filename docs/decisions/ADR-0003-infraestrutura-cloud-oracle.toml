@@ -33,7 +33,7 @@ Usar a seguinte stack na Oracle Cloud:
    RAM; tuning de kernel UDP para latencia baixa.
 
 3. **DuckDNS:** DNS dinamico via script com cron a cada 5 minutos, resolvendo o
-   IP efemero da instancia. Jogadores conectam via `joga10.duckdns.org:8211`.
+   IP efemero da instancia. Jogadores conectam via `<SUBDOMINIO>.duckdns.org:8211`.
 
 4. **Auto-update:** `AUTO_UPDATE_ENABLED=true` e `TARGET_MANIFEST_ID` removido
    para receber updates do jogo automaticamente, mesmo com o risco de box64

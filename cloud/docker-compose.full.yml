@@ -7,11 +7,12 @@ services:
     restart: unless-stopped
     network_mode: host
     env_file:
-      - .env
+      - ../.env
     environment:
       - MANAGEMENT_MODE=docker
       - DOCKER_CONTAINER_NAME=palworld-server
       - GAME_HOST=0.0.0.0
       - GAME_PORT=8211
+      - TZ=America/Sao_Paulo
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

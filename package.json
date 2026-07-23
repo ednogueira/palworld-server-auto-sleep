@@ -5,11 +5,13 @@
   "description": "Protege sua campanha de Palworld desligando automaticamente o servidor dedicado quando não há jogadores online. Evita morte dos Pals, deterioração da base e perda de progressão. Quando um jogador tenta conectar, o servidor acorda automaticamente do último save.",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --env-file=.env src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:scenarios": "tsx scripts/test-scenarios/harness.ts",
+    "typecheck:scripts": "tsc -p tsconfig.scripts.json --noEmit"
   },
   "engines": {
     "node": ">=22.0.0"
